@@ -44,6 +44,14 @@ describe('nodeMatches', () => {
 });
 
 describe('NodeStatusSection', () => {
+  test('legend shows how many nodes are in each status', () => {
+    render(<NodeStatusSection />);
+    const topology = buildDummyTopology();
+    const idleCount = [...placedNodes(), ...topology.unplaced].filter((node) => node.status === 'idle').length;
+    const idleItem = screen.getByText('Idle', { selector: 'li' });
+    expect(idleItem.textContent).toBe(`Idle(${idleCount})`);
+  });
+
   test('renders one button per node across racks and the unplaced group', () => {
     render(<NodeStatusSection />);
     const topology = buildDummyTopology();

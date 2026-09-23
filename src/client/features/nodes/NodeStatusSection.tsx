@@ -3,15 +3,21 @@ import { buildDummyTopology } from './dummy-topology.ts';
 import { NodeSlot } from './NodeSlot.tsx';
 import { RackColumn } from './RackColumn.tsx';
 import { NODE_STATUSES, NODE_STATUS_CLASSES, NODE_STATUS_LABELS, nodeMatches } from './topology.ts';
-import type { NodeStatusFilter } from './topology.ts';
+import type { NodeStatus, NodeStatusFilter, RackNode } from './topology.ts';
 
-function StatusLegend() {
+function StatusLegend({ nodes }: { nodes: RackNode[] }) {
+  const counts = new Map<NodeStatus, number>();
+  for (const node of nodes) {
+    counts.set(node.status, (counts.get(node.status) ?? 0) + 1);
+  }
+
   return (
     <ul className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
       {NODE_STATUSES.map((status) => (
         <li key={status} className="flex items-center gap-1.5">
           <span className={`inline-block h-3 w-5 border border-black ${NODE_STATUS_CLASSES[status]}`} />
           {NODE_STATUS_LABELS[status]}
+          <span className="text-gray-500 tabular-nums">({counts.get(status) ?? 0})</span>
         </li>
       ))}
       <li className="flex items-center gap-1.5">
@@ -81,7 +87,7 @@ function NodeStatusSection() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
-          <StatusLegend />
+          <StatusLegend nodes={allNodes} />
           {filtering ? (
             <p className="text-sm text-gray-600" role="status">
               {matchCount} of {allNodes.length} nodes match

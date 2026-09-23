@@ -23,7 +23,8 @@ export default defineConfig({
 
   server: {
     proxy: {
-      '/api': 'http://localhost:3000',
+      // Only the API itself; client modules also live under /api (src/client/api).
+      '/api/v1': 'http://localhost:3000',
     },
   },
 

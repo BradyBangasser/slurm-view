@@ -1,0 +1,59 @@
+// Public v1 topology contract: the site's rack layout joined with live
+// node state from the shared node snapshot.
+
+export type TopologyNodeAvailability = 'available' | 'restricted' | 'down';
+export type TopologyCpuLoadBucket = 'low' | 'medium' | 'high';
+
+export interface TopologyNodeDto {
+  name: string;
+  /** False when the layout names a node Slurm does not report; every field below is then null or empty. */
+  inSlurm: boolean;
+  state: string | null;
+  stateFlags: string[];
+  availability: TopologyNodeAvailability | null;
+  reason: string | null;
+  partitions: string[];
+  cpus: number | null;
+  allocCpus: number | null;
+  /**
+   * CPU load per allocated CPU, bucketed with the same thresholds as the
+   * stats CPU chart. Null when nothing is allocated, the node is down, or
+   * Slurm reports no load.
+   */
+  cpuLoadBucket: TopologyCpuLoadBucket | null;
+  totalMemoryMiB: number | null;
+  allocMemoryMiB: number | null;
+  gpus: number | null;
+  allocGpus: number | null;
+}
+
+export interface TopologyBoxDto {
+  /** Lowest rack unit the box occupies (U1 is the bottom). */
+  u: number;
+  height: number;
+  /** The layout entry as written, e.g. "nova22-[1-4]". */
+  label: string;
+  nodes: TopologyNodeDto[];
+}
+
+export interface TopologyRackDto {
+  id: string;
+  /** Floor-grid cell parsed from ids like "BK31" (row BK, column 31); null otherwise. */
+  grid: { row: string; column: number } | null;
+  boxes: TopologyBoxDto[];
+}
+
+export interface TopologyPodDto {
+  name: string;
+  racks: TopologyRackDto[];
+}
+
+export interface TopologyResponse {
+  /** False when the site has no `topology` config; pods is then empty and every node is unplaced. */
+  configured: boolean;
+  rackHeight: number;
+  pods: TopologyPodDto[];
+  /** Nodes Slurm reports that the layout does not place, sorted by name. */
+  unplaced: TopologyNodeDto[];
+  updatedAt: string;
+}

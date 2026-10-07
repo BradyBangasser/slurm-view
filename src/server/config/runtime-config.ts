@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
+import { expandSlurmHostlist } from '../adapters/slurm/hostlist.js';
 
 const SYSTEM_CONFIG_DIR_PATH = path.resolve(__dirname, '..', '..', '..', 'config.d');
 const USER_CONFIG_DIR_PATH = path.join(os.homedir(), '.local', 'slurm-view', 'config.d');
@@ -25,6 +26,98 @@ const navbarSchema = z.object({
     color: hexColorSchema
 }).strict();
 
+// Physical rack layout. Slurm has no notion of where a node lives, so the
+// site describes it: pods hold racks, racks hold boxes listed by lowest
+// rack unit. A box's `name` is a Slurm hostlist so a multi-node chassis
+// is one line ("nova22-[1-4]").
+const DEFAULT_RACK_HEIGHT = 42;
+
+const topologyBoxSchema = z.object({
+    name: z.string().trim().min(1),
+    u: z.number().int().min(1),
+    height: z.number().int().min(1).default(1),
+    verify: z.string().optional()
+}).strict();
+
+const topologyRackSchema = z.object({
+    id: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/, 'must be 1-32 letters, digits, "_" or "-"'),
+    nodes: z.array(topologyBoxSchema).min(1)
+}).strict();
+
+const topologyPodSchema = z.object({
+    name: z.string().trim().min(1),
+    racks: z.array(topologyRackSchema)
+}).strict();
+
+const topologyPodsSchema = z.array(topologyPodSchema);
+
+const topologySchema = z.object({
+    rackHeight: z.number().int().min(1).max(64).default(DEFAULT_RACK_HEIGHT),
+    pods: topologyPodsSchema
+}).strict();
+
+type TopologyConfig = z.infer<typeof topologySchema>;
+
+// Cross-entry checks a per-field schema cannot express: boxes fit the
+// rack, boxes in one rack do not overlap, and no rack or node is listed
+// twice anywhere.
+function validateTopology(topology: TopologyConfig, ctx: z.RefinementCtx): void {
+    const rackIds = new Map<string, string>();
+    const nodeOwners = new Map<string, string>();
+
+    topology.pods.forEach((pod, podIndex) => {
+        pod.racks.forEach((rack, rackIndex) => {
+            const rackPath = ['topology', 'pods', podIndex, 'racks', rackIndex];
+            const previousPod = rackIds.get(rack.id);
+            if (previousPod !== undefined) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [...rackPath, 'id'],
+                    message: `rack ${rack.id} is listed twice (also in pod ${previousPod})`
+                });
+            }
+            rackIds.set(rack.id, pod.name);
+
+            const unitOwners = new Map<number, string>();
+            rack.nodes.forEach((box, boxIndex) => {
+                const boxPath = [...rackPath, 'nodes', boxIndex];
+                const top = box.u + box.height - 1;
+                if (top > topology.rackHeight) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: [...boxPath, 'u'],
+                        message: `${box.name} in rack ${rack.id} occupies U${box.u}-U${top}, above rackHeight ${topology.rackHeight}`
+                    });
+                }
+                for (let unit = box.u; unit <= Math.min(top, topology.rackHeight); unit += 1) {
+                    const owner = unitOwners.get(unit);
+                    if (owner !== undefined) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: [...boxPath, 'u'],
+                            message: `${box.name} overlaps ${owner} at U${unit} in rack ${rack.id}`
+                        });
+                        break;
+                    }
+                    unitOwners.set(unit, box.name);
+                }
+
+                for (const nodeName of expandSlurmHostlist(box.name)) {
+                    const owner = nodeOwners.get(nodeName);
+                    if (owner !== undefined) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: [...boxPath, 'name'],
+                            message: `node ${nodeName} is placed twice (rack ${owner} and rack ${rack.id})`
+                        });
+                    }
+                    nodeOwners.set(nodeName, rack.id);
+                }
+            });
+        });
+    });
+}
+
 const runtimeConfigSchema = z.object({
     stats: z.object({
         cpuLoad: z.object({
@@ -38,7 +131,8 @@ const runtimeConfigSchema = z.object({
             gpu: chartDisplaySchema
         }).strict(),
         navbar: navbarSchema
-    }).strict()
+    }).strict(),
+    topology: topologySchema.optional()
 }).strict().superRefine((value, ctx) => {
     if (value.stats.cpuLoad.thresholds.lowMax >= value.stats.cpuLoad.thresholds.mediumMax) {
         ctx.addIssue({
@@ -46,6 +140,9 @@ const runtimeConfigSchema = z.object({
             path: ['stats', 'cpuLoad', 'thresholds', 'lowMax'],
             message: 'stats.cpuLoad.thresholds.lowMax must be smaller than stats.cpuLoad.thresholds.mediumMax'
         });
+    }
+    if (value.topology) {
+        validateTopology(value.topology, ctx);
     }
 });
 
@@ -77,6 +174,12 @@ const runtimeConfigPartialSchema = z.object({
             title: z.string().min(1).optional(),
             color: hexColorSchema.optional()
         }).strict().optional()
+    }).strict().optional(),
+    // `pods` is a list, so the merge takes it whole from the first file
+    // that sets it; racks are not combined across files.
+    topology: z.object({
+        rackHeight: z.number().int().min(1).max(64).optional(),
+        pods: topologyPodsSchema.optional()
     }).strict().optional()
 }).strict();
 
@@ -289,6 +392,7 @@ function resetRuntimeConfigForTests(): void {
 }
 
 export {
+    DEFAULT_RACK_HEIGHT,
     SYSTEM_CONFIG_DIR_PATH,
     USER_CONFIG_DIR_PATH,
     initializeRuntimeConfig,
@@ -298,4 +402,4 @@ export {
     runtimeConfigSchema,
     runtimeConfigPartialSchema
 };
-export type { RuntimeConfig, CpuLoadThresholds };
+export type { RuntimeConfig, CpuLoadThresholds, TopologyConfig };

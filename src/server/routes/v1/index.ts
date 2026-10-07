@@ -10,6 +10,7 @@ import { HttpError, errorHandler } from '../../middleware/error-handler.js';
 import { createJobsRouter } from './jobs.js';
 import { createPartitionsRouter } from './partitions.js';
 import { createStatsRouter } from './stats.js';
+import { createTopologyRouter } from './topology.js';
 import { createUiSettingsRouter } from './ui-settings.js';
 
 interface V1RouterDeps {
@@ -32,6 +33,7 @@ function createV1Router(deps: V1RouterDeps = {}): Router {
 
   router.use('/jobs', createJobsRouter(deps.jobsCache, deps.seffRun, deps.pendingAnalysis));
   router.use('/stats', createStatsRouter(deps.nodesCache));
+  router.use('/topology', createTopologyRouter(deps.nodesCache));
   router.use('/ui-settings', createUiSettingsRouter());
   router.use('/partitions', createPartitionsRouter(deps.partitionsCache));
 

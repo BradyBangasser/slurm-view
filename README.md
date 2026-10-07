@@ -107,6 +107,10 @@ Users can override those defaults without modifying the application itself by pl
 ```
 User configuration is loaded before the bundled defaults, so values defined there take precedence.
 
+### Rack layout (optional)
+
+Slurm does not record where nodes physically sit. To enable the rack view, describe your racks under a `topology` key; see `config.d/topology.yaml.example` for the format. Racks list boxes by their lowest rack unit, and a multi-node chassis is a single Slurm hostlist entry such as `node[01-04]`. Overlapping boxes, boxes taller than the rack, and nodes placed twice are rejected at startup. Nodes Slurm reports that the layout does not list are shown as unplaced.
+
 ## Compatibility
 
 Slurm View is currently designed for Open OnDemand installations where the application can invoke the local Slurm command-line tools.

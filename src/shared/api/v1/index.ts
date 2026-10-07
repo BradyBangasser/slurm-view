@@ -37,6 +37,15 @@ export type {
 export type { PartitionsResponse } from './partitions.js';
 export type { UiSettingsResponse, ChartViewPolicy, NavbarViewPolicy } from './ui-settings.js';
 export type {
+  TopologyBoxDto,
+  TopologyCpuLoadBucket,
+  TopologyNodeAvailability,
+  TopologyNodeDto,
+  TopologyPodDto,
+  TopologyRackDto,
+  TopologyResponse,
+} from './topology.js';
+export type {
   CpuStatsDto,
   GpuStatsDto,
   GpuTypeStatsDto,

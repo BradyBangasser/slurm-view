@@ -1,0 +1,30 @@
+# Rack layout for the /api/v1/topology rack view. Optional.
+#
+# Copy to config.d/topology.yaml (or ~/.local/slurm-view/config.d/) and
+# describe your racks. Slurm does not know where nodes physically live, so
+# this file is the only source of that information.
+#
+#   - Racks list boxes by `u`, the lowest rack unit the box occupies (U1 = bottom).
+#   - `height` is the box height in rack units (default 1).
+#   - `name` is a Slurm node name or hostlist; a multi-node chassis is one
+#     line, e.g. "node[01-04]".
+#   - `verify` is an optional free-text note for entries that still need
+#     checking. It is ignored by the server.
+#   - Rack ids shaped like a floor-grid cell ("BK31" = row BK, column 31)
+#     are reported with that grid position.
+#   - Nodes Slurm reports that are not listed here appear as unplaced.
+#   - Only one file may set `topology.pods`; racks are not merged across files.
+
+topology:
+  rackHeight: 42
+  pods:
+    - name: Compute
+      racks:
+        - id: AA01
+          nodes:
+            - { name: "node[01-04]", u: 1, height: 2 }
+            - { name: node05, u: 4 }
+            - { name: node06, u: 5 }
+        - id: AA02
+          nodes:
+            - { name: gpu01, u: 1, height: 4 }

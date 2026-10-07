@@ -1,10 +1,12 @@
-import type { NodeStatus, Rack, RackNode, Topology } from './topology.ts';
+import { CURRENT_USER } from './topology.ts';
+import type { NodeStatus, Rack, RackItem, RackNode, Topology } from './topology.ts';
 
 // Placeholder data for the node status view until /api/v1/topology exists.
 // Deterministic (seeded) so renders and tests are stable.
 
 const RACK_COUNT = 6;
-const SLOTS_PER_RACK = 14;
+// Items (not nodes) per rack. A 4U or 2U-Quad item still counts once here.
+const ITEMS_PER_RACK = 10;
 
 // Small LCG; good enough for plausible-looking fake data.
 function seededRandom(seed: number): () => number {
@@ -26,6 +28,9 @@ const JOB_NAMES = [
   'vasp_relax',
 ];
 
+const USERS = [CURRENT_USER, 'amurphy', 'skim', 'rgrandin', 'tlee'];
+const ACCOUNTS = ['hpc-lab', 'bio-genomics', 'cs-ml', 'cfd-group'];
+
 const DRAIN_REASONS = ['hardware check', 'kernel update', 'bad DIMM'];
 const DOWN_REASONS = ['Not responding', 'GPU fell off the bus'];
 
@@ -45,6 +50,22 @@ const SLURM_STATE: Record<NodeStatus, string> = {
   down: 'DOWN+NOT_RESPONDING',
 };
 
+// Form factors seen on Nova per Meeting 4: 1U and 2U single-node chassis,
+// 4U single-node (e.g. GPU trays), and 2U Quad (4 nodes sharing one 2U slot).
+const FORM_FACTORS: { heightU: 1 | 2 | 4; nodeCount: number }[] = [
+  { heightU: 1, nodeCount: 1 },
+  { heightU: 2, nodeCount: 1 },
+  { heightU: 4, nodeCount: 1 },
+  { heightU: 2, nodeCount: 4 },
+];
+
+function pickFormFactor(roll: number): { heightU: 1 | 2 | 4; nodeCount: number } {
+  if (roll < 0.5) return FORM_FACTORS[0]!; // 1U is the common case
+  if (roll < 0.75) return FORM_FACTORS[1]!; // 2U
+  if (roll < 0.85) return FORM_FACTORS[2]!; // 4U
+  return FORM_FACTORS[3]!; // 2U Quad
+}
+
 function makeNode(name: string, partition: string, random: () => number): RackNode {
   const status = pickStatus(random());
   const jobCount =
@@ -55,11 +76,26 @@ function makeNode(name: string, partition: string, random: () => number): RackNo
     { length: jobCount },
     () => JOB_NAMES[Math.floor(random() * JOB_NAMES.length)]!,
   );
+  const owners = new Set<string>();
+  const accounts = new Set<string>();
+  for (let i = 0; i < jobCount; i += 1) {
+    owners.add(USERS[Math.floor(random() * USERS.length)]!);
+    accounts.add(ACCOUNTS[Math.floor(random() * ACCOUNTS.length)]!);
+  }
   const reason =
     status === 'draining' ? DRAIN_REASONS[Math.floor(random() * DRAIN_REASONS.length)]!
     : status === 'down' ? DOWN_REASONS[Math.floor(random() * DOWN_REASONS.length)]!
     : null;
-  return { name, status, slurmState: SLURM_STATE[status], partitions: [partition], jobs, reason };
+  return {
+    name,
+    status,
+    slurmState: SLURM_STATE[status],
+    partitions: [partition],
+    jobs,
+    users: [...owners],
+    accounts: [...accounts],
+    reason,
+  };
 }
 
 function buildDummyTopology(seed = 4020): Topology {
@@ -71,18 +107,24 @@ function buildDummyTopology(seed = 4020): Topology {
     const isGpuRack = rackIndex >= RACK_COUNT - 2;
     const prefix = isGpuRack ? 'nova-gpu' : 'nova';
     const partition = isGpuRack ? 'gpu' : 'nova';
-    racks.push({
-      id: `R${rackIndex + 1}`,
-      slots: Array.from({ length: SLOTS_PER_RACK }, (_, slotIndex) => {
-        // Leave the occasional slot physically empty.
-        if (random() < 0.1) {
-          return { slot: slotIndex + 1, node: null };
-        }
+
+    const items: RackItem[] = [];
+    for (let itemIndex = 0; itemIndex < ITEMS_PER_RACK; itemIndex += 1) {
+      // Leave the occasional item physically empty (a single 1U gap).
+      if (random() < 0.08) {
+        items.push({ id: `${rackIndex}-${itemIndex}`, heightU: 1, bays: [null] });
+        continue;
+      }
+      const { heightU, nodeCount } = pickFormFactor(random());
+      const bays = Array.from({ length: nodeCount }, () => {
         const name = `${prefix}${String(nodeNumber).padStart(3, '0')}`;
         nodeNumber += 1;
-        return { slot: slotIndex + 1, node: makeNode(name, partition, random) };
-      }),
-    });
+        return makeNode(name, partition, random);
+      });
+      items.push({ id: `${rackIndex}-${itemIndex}`, heightU, bays });
+    }
+
+    racks.push({ id: `R${rackIndex + 1}`, items });
   }
 
   const unplaced = [

@@ -1,4 +1,5 @@
 import { JobsSection } from '../features/jobs/JobsSection.tsx';
+import { RacksSection } from '../features/racks/RacksSection.tsx';
 import { StatsDashboard } from '../features/stats/StatsDashboard.tsx';
 import { Navbar } from '../components/Navbar.tsx';
 
@@ -11,6 +12,9 @@ function DashboardPage() {
             <a href="#resource-utilization" className="transition hover:opacity-80">
               Resources
             </a>
+            <a href="#node-status" className="transition hover:opacity-80">
+              Nodes
+            </a>
             <a href="#job-queue" className="transition hover:opacity-80">
               Queue
             </a>
@@ -19,6 +23,7 @@ function DashboardPage() {
       />
       <main className="mx-auto max-w-[1800px] px-5 py-5">
         <StatsDashboard />
+        <RacksSection />
         <JobsSection />
       </main>
     </div>

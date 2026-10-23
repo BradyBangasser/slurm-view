@@ -1,4 +1,4 @@
-import { efficiencyKeys, jobsKeys, partitionKeys, statsKeys, uiSettingsKeys } from '../../src/client/api/query-keys';
+import { efficiencyKeys, jobsKeys, partitionKeys, statsKeys, topologyKeys, uiSettingsKeys } from '../../src/client/api/query-keys';
 import { EFFICIENCY_GC_TIME_MS, EFFICIENCY_STALE_TIME_MS } from '../../src/client/api/efficiency';
 import { efficiencyQueryOptions } from '../../src/client/api/efficiency';
 import { jobDetailQueryOptions } from '../../src/client/api/job-details';
@@ -33,6 +33,10 @@ describe('query keys', () => {
 
   test('ui-settings has a single stable key (fetched once, cached indefinitely)', () => {
     expect(uiSettingsKeys.detail).toEqual(['ui-settings', 'detail']);
+  });
+
+  test('topology has a single stable key: one layout, filtered client-side', () => {
+    expect(topologyKeys.detail).toEqual(['topology', 'detail']);
   });
 
   test('job detail keys are per canonical ID', () => {

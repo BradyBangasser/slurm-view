@@ -22,8 +22,13 @@ export default defineConfig({
   base: './',
 
   server: {
+    // Proxy only the real REST mount (/api/v1, see server/app.ts). A bare
+    // '/api' prefix also matches Vite's own dev-server module requests for
+    // src/client/api/*.ts (root is 'src/client', so that directory serves
+    // at /api/*.ts) and would hijack them to the Express backend, 404ing
+    // every import from the client's api/ folder.
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api/v1': 'http://localhost:3000',
     },
   },
 

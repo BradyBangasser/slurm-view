@@ -70,5 +70,13 @@ const uiSettingsKeys = {
   detail: ['ui-settings', 'detail'] as const,
 };
 
-export { JOBS_PAGE_DEFAULT, JOBS_PAGE_SIZE_DEFAULT, efficiencyKeys, jobsKeys, partitionKeys, pendingAnalysisKeys, statsKeys, uiSettingsKeys };
+// The rack layout only changes when a site admin edits config.d/topology.yaml
+// and restarts; node state inside it still polls like the rest of the app
+// (see topologyKeys usage at the call site), so this key has no parameters.
+const topologyKeys = {
+  all: ['topology'] as const,
+  detail: ['topology', 'detail'] as const,
+};
+
+export { JOBS_PAGE_DEFAULT, JOBS_PAGE_SIZE_DEFAULT, efficiencyKeys, jobsKeys, partitionKeys, pendingAnalysisKeys, statsKeys, topologyKeys, uiSettingsKeys };
 export type { JobsListInput };

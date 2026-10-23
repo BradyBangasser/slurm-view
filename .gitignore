@@ -2,3 +2,4 @@ node_modules
 tmp/restart.txt
 coverage/
 dist/
+config.d/topology.yaml

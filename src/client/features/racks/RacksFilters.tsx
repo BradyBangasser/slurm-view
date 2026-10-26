@@ -13,10 +13,6 @@ interface RacksFiltersProps {
   onColorModeChange: (mode: ColorMode) => void;
   density: RackDensity;
   onDensityChange: (density: RackDensity) => void;
-  combinedView: boolean;
-  onCombinedViewChange: (combined: boolean) => void;
-  // Hidden when there's only one pod (or none) — nothing to combine.
-  combinedViewAvailable: boolean;
 }
 
 // A vertical stack, for the pod view's right-hand filter column
@@ -37,25 +33,9 @@ function RacksFilters({
   onColorModeChange,
   density,
   onDensityChange,
-  combinedView,
-  onCombinedViewChange,
-  combinedViewAvailable,
 }: RacksFiltersProps) {
   return (
     <div className="flex flex-col gap-3">
-      {combinedViewAvailable ? (
-        <span className="flex flex-col text-sm text-gray-700">
-          Layout
-          <label className="mt-1 flex items-center gap-1.5 rounded border border-gray-300 px-2 py-1 text-sm">
-            <input
-              type="checkbox"
-              checked={combinedView}
-              onChange={(event) => onCombinedViewChange(event.target.checked)}
-            />
-            Combined view
-          </label>
-        </span>
-      ) : null}
       <label className="flex flex-col text-sm text-gray-700">
         View
         <select

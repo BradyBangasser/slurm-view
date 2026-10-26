@@ -277,7 +277,7 @@ describe('RacksSection', () => {
     expect(screen.queryByText('BD31')).toBeNull();
   });
 
-  test('combined view pulls every pod\'s racks into one view, no tabs', async () => {
+  test("combined view pulls every pod's racks into one view, as a tab alongside the pods", async () => {
     setupFetch();
     renderSection();
     const user = userEvent.setup();
@@ -286,12 +286,13 @@ describe('RacksSection', () => {
     // Single-pod tabs are the default; the other pod's rack isn't shown.
     expect(screen.queryByText('AD46')).toBeNull();
 
-    await user.click(screen.getByLabelText('Combined view'));
+    await user.click(screen.getByRole('tab', { name: 'Combined view' }));
 
-    // Both pods' racks now render together, and the tabs are gone.
+    // Both pods' racks now render together, and the pod/combined/unplaced
+    // tabs are all still there to switch back out.
     expect(screen.getByText('BD31')).toBeTruthy();
     expect(screen.getByText('AD46')).toBeTruthy();
-    expect(screen.queryByRole('tab', { name: 'Compute pod' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Compute pod' })).toBeTruthy();
     // Each rack is labeled with its pod name, since there's no tab heading
     // to disambiguate them anymore.
     expect(screen.getByText('Compute')).toBeTruthy();
@@ -300,9 +301,9 @@ describe('RacksSection', () => {
     expect(screen.getByText(/Unplaced nodes/)).toBeTruthy();
     expect(screen.getByLabelText('nova1-99: Idle')).toBeTruthy();
 
-    await user.click(screen.getByLabelText('Combined view'));
+    await user.click(screen.getByRole('tab', { name: 'Compute pod' }));
     expect(screen.queryByText('AD46')).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Compute pod' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Compute pod' }).getAttribute('aria-selected')).toBe('true');
   });
 
   test("combined view applies the user's saved rack order from ui-settings", async () => {
@@ -311,16 +312,16 @@ describe('RacksSection', () => {
     const user = userEvent.setup();
 
     await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
-    await user.click(screen.getByLabelText('Combined view'));
+    await user.click(screen.getByRole('tab', { name: 'Combined view' }));
     await waitFor(() => expect(screen.getByText('AD46')).toBeTruthy());
 
     // Default order is Compute (BD31) before GPU (AD46), alphabetically by
     // pod name; the saved rackOrder puts AD46 first instead.
-    const rackLabels = screen.getAllByLabelText(/^Rack /).map((element) => element.getAttribute('aria-label'));
+    const rackLabels = screen.getAllByLabelText(/^Rack [A-Z0-9]+$/).map((element) => element.getAttribute('aria-label'));
     expect(rackLabels).toEqual(['Rack AD46', 'Rack BD31']);
   });
 
-  test('combined view toggle is hidden when there is only one pod', async () => {
+  test('combined view tab is hidden when there is only one pod', async () => {
     setupFetch({
       handler: () => ({
         ...TOPOLOGY_BODY,
@@ -330,7 +331,7 @@ describe('RacksSection', () => {
     renderSection();
 
     await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
-    expect(screen.queryByLabelText('Combined view')).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Combined view' })).toBeNull();
   });
 
   test('fullscreen button toggles a viewport-filling layout (jsdom has no real Fullscreen API)', async () => {

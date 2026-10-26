@@ -1,4 +1,5 @@
 import { RackBox } from './RackBox.tsx';
+import { RACK_HARDWARE_BG_CLASSES, RACK_HARDWARE_BORDER_CLASSES, rackHardwareKind } from './rack-color.ts';
 import type { ColorMode } from './rack-color.ts';
 import type { RackDensity } from './rack-density.ts';
 import { RACK_WIDTH_PX, UNIT_HEIGHT_PX } from './rack-density.ts';
@@ -16,8 +17,8 @@ interface RackColumnProps {
   activeNode: TopologyNodeDto | null;
   onSelect: (node: TopologyNodeDto) => void;
   // Set only in the combined view, where racks from several pods sit side
-  // by side and the pod name disambiguates them (PodSection's own tab/
-  // heading already does this, so it's redundant there).
+  // by side and the pod name disambiguates them (the single-pod view's own
+  // tab/heading already does this, so it's redundant there).
   podName?: string;
 }
 
@@ -31,7 +32,7 @@ interface RackColumnProps {
 // compaction rule — see rack-layout.ts's compactSegments). Styled as a dark rack with its own rail posts,
 // so it reads as hardware rather than a plain list. `shrink-0` so it
 // holds its width in the pod's horizontal-scrolling strip (see
-// PodSection.tsx) — deliberately no scroll-snap there, since mandatory
+// RacksGrid.tsx) — deliberately no scroll-snap there, since mandatory
 // snapping across many wide racks fights scroll momentum and feels laggy
 // rather than smooth.
 function RackColumn({ rack, rackHeight, density, colorMode, search, filters, activeNode, onSelect, podName }: RackColumnProps) {
@@ -41,6 +42,9 @@ function RackColumn({ rack, rackHeight, density, colorMode, search, filters, act
   const rawSegments = buildRackSegments(rack.boxes, range);
   const segments = [...(density === 'compact' ? compactSegments(rawSegments) : rawSegments)].reverse();
   const unitHeightPx = UNIT_HEIGHT_PX[density];
+  const hardwareKind = rackHardwareKind(rack);
+  const hardwareBorderClass = RACK_HARDWARE_BORDER_CLASSES[hardwareKind];
+  const hardwareBgClass = RACK_HARDWARE_BG_CLASSES[hardwareKind];
   return (
     <figure className="flex shrink-0 flex-col items-center gap-0">
       {podName !== undefined ? (
@@ -55,7 +59,7 @@ function RackColumn({ rack, rackHeight, density, colorMode, search, filters, act
         ) : null}
       </figcaption>
       <div
-        className="flex gap-1 rounded-md border border-slate-900 bg-slate-800 p-1"
+        className={`flex gap-1 rounded-md border-2 p-1 ${hardwareBorderClass}`}
         role="list"
         aria-label={`Rack ${rack.id}`}
       >
@@ -77,7 +81,7 @@ function RackColumn({ rack, rackHeight, density, colorMode, search, filters, act
               <div
                 key={`empty-${segment.u}`}
                 aria-hidden="true"
-                className="border border-dashed border-slate-700/60 bg-slate-800"
+                className={`border border-dashed border-slate-700/60 ${hardwareBgClass}`}
                 style={{ height: segment.height * unitHeightPx }}
               />
             ),

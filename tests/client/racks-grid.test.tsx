@@ -24,9 +24,6 @@ function renderGrid(props: Partial<Parameters<typeof RacksGrid>[0]> = {}) {
       filters={DEFAULT_RACK_FILTERS}
       onFiltersChange={() => {}}
       partitions={[]}
-      combinedView={false}
-      onCombinedViewChange={() => {}}
-      combinedViewAvailable={false}
       legendNodes={[]}
       activeNode={null}
       onSelect={() => {}}
@@ -54,7 +51,7 @@ function renderGrid(props: Partial<Parameters<typeof RacksGrid>[0]> = {}) {
 describe('RacksGrid row-wrap behavior', () => {
   test('is a flex row by default (the single-pod horizontal-scroll strip), not a grid', () => {
     renderGrid();
-    const container = screen.getByLabelText('Rack A01').closest('.rack-scroll') as HTMLElement;
+    const container = screen.getByLabelText('Rack A01').closest('.rack-layout') as HTMLElement;
     expect(container.className).toContain('flex');
     expect(container.className).not.toContain('flex-wrap');
     expect(container.className).not.toContain('grid');
@@ -62,7 +59,7 @@ describe('RacksGrid row-wrap behavior', () => {
 
   test('switches to a grid with exactly maxRacksPerRow columns, not an estimated flex width', () => {
     renderGrid({ maxRacksPerRow: 7 });
-    const container = screen.getByLabelText('Rack A01').closest('.rack-scroll') as HTMLElement;
+    const container = screen.getByLabelText('Rack A01').closest('.rack-layout') as HTMLElement;
     expect(container.className).toContain('grid');
     expect(container.className).not.toContain('flex-wrap');
     expect(container.style.gridTemplateColumns).toBe('repeat(7, max-content)');
@@ -72,14 +69,14 @@ describe('RacksGrid row-wrap behavior', () => {
 
   test('the combined view (wrap=true, no maxRacksPerRow) stays flex-wrap, unbounded by a column count', () => {
     renderGrid({ wrap: true });
-    const container = screen.getByLabelText('Rack A01').closest('.rack-scroll') as HTMLElement;
+    const container = screen.getByLabelText('Rack A01').closest('.rack-layout') as HTMLElement;
     expect(container.className).toContain('flex-wrap');
     expect(container.className).not.toContain('grid');
   });
 
   test('maxRacksPerRow takes the grid layout even when wrap is also true', () => {
     renderGrid({ wrap: true, maxRacksPerRow: 3 });
-    const container = screen.getByLabelText('Rack A01').closest('.rack-scroll') as HTMLElement;
+    const container = screen.getByLabelText('Rack A01').closest('.rack-layout') as HTMLElement;
     expect(container.className).toContain('grid');
     expect(container.style.gridTemplateColumns).toBe('repeat(3, max-content)');
   });
@@ -126,7 +123,7 @@ describe('RacksGrid dotted background', () => {
         },
       ],
     });
-    const container = screen.getByRole('list', { name: 'Test pod (2 racks)' }) as HTMLElement;
+    const container = screen.getByRole('list', { name: 'Test pod (2 racks)' }).closest('.rack-scroll') as HTMLElement;
     expect(container.style.backgroundSize).toBe('20px 20px');
   });
 });
@@ -169,11 +166,4 @@ describe('RacksGrid filters live inside the component', () => {
     expect(screen.getByLabelText('View')).toBeTruthy();
   });
 
-  test('shows the combined-view checkbox only when combinedViewAvailable', () => {
-    renderGrid({ combinedViewAvailable: false });
-    expect(screen.queryByLabelText('Combined view')).toBeNull();
-
-    renderGrid({ combinedViewAvailable: true });
-    expect(screen.getByLabelText('Combined view')).toBeTruthy();
-  });
 });

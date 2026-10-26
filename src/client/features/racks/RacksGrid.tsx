@@ -1,3 +1,4 @@
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Legend } from './Legend.tsx';
@@ -31,11 +32,12 @@ const DOTTED_GRID_STYLE = {
 };
 
 // Everything RacksGrid needs that ISN'T specific to which racks/nodes it's
-// showing: the filter/color/density/combined-view state and callbacks, plus
-// the legend/selection/detail-panel wiring. Factored out so PodSection.tsx
-// and CombinedRacksSection.tsx — which each only compute `racks` and
-// `title` — can take `RacksGridControlsProps` and forward it with a single
-// `{...controls}` instead of repeating this whole list three times.
+// showing: the filter/color/density state and callbacks, plus the
+// legend/selection/detail-panel wiring. Factored out so PodView.tsx — which
+// computes `racks` and `title` for whichever tab is active (a pod, the
+// combined cross-pod view, or Unplaced) — can take `RacksGridControlsProps`
+// and forward it with a single `{...controls}` instead of listing it all
+// inline.
 interface RacksGridControlsProps {
   density: RackDensity;
   onDensityChange: (density: RackDensity) => void;
@@ -46,9 +48,6 @@ interface RacksGridControlsProps {
   filters: RackFilters;
   onFiltersChange: (filters: RackFilters) => void;
   partitions: string[];
-  combinedView: boolean;
-  onCombinedViewChange: (combined: boolean) => void;
-  combinedViewAvailable: boolean;
 
   // Legend counts are topology-wide (every node, not just the ones in this
   // particular rack/flat view), matching the pre-refactor behavior where
@@ -62,8 +61,7 @@ interface RacksGridControlsProps {
 interface RacksGridProps extends RacksGridControlsProps {
   // Heading shown above the content, inside the same fullscreen-able box
   // (e.g. "Compute pod (12 racks)", "All pods, combined (19 racks)",
-  // "Unplaced nodes") — PodSection.tsx / CombinedRacksSection.tsx /
-  // PodView.tsx each compute their own.
+  // "Unplaced nodes") — PodView.tsx computes this per active tab.
   title: string;
   // Rack-elevation mode when non-empty. When empty, `flatNodes` renders
   // instead as a dense button grid — used for the Unplaced-only tab and
@@ -75,7 +73,7 @@ interface RacksGridProps extends RacksGridControlsProps {
   flatNodesDescription?: string;
   rackHeight: number;
   // A single pod's racks scroll horizontally in one row by default (the
-  // original PodSection behavior), unless maxRacksPerRow forces a wrap
+  // original single-pod-view behavior), unless maxRacksPerRow forces a wrap
   // instead (see below). The combined view always wraps, since it can hold
   // far more racks than fit in one row and "pulled together" reads better
   // as a block than as one very long strip.
@@ -89,9 +87,10 @@ interface RacksGridProps extends RacksGridControlsProps {
   // actually fit. Grid auto-flows onto a new row once a row's N cells are
   // full, sized to each rack's real rendered width.
   maxRacksPerRow?: number;
-  // The pod/unplaced tablist (PodView.tsx), rendered inside the canvas
-  // above the title so switching sections doesn't require leaving it —
-  // omitted by CombinedRacksSection's usage, which has no tabs of its own.
+  // The pod/combined/unplaced tablist (PodView.tsx), rendered inside the
+  // canvas above the title so switching tabs — including into and out of
+  // the combined view — doesn't require leaving it, and this one RacksGrid
+  // instance (and its fullscreen state) survives every tab switch.
   tabsSlot?: ReactNode;
 }
 
@@ -124,9 +123,6 @@ function RacksGrid({
   filters,
   onFiltersChange,
   partitions,
-  combinedView,
-  onCombinedViewChange,
-  combinedViewAvailable,
   legendNodes,
   activeNode,
   onSelect,
@@ -192,7 +188,7 @@ function RacksGrid({
   if (racks.length > 0) {
     mainContent = (
       <div
-        className={`min-w-0 gap-4 ${layoutClassName}`}
+        className={`rack-layout min-w-0 gap-4 ${layoutClassName}`}
         style={
           maxRacksPerRow !== undefined ? { gridTemplateColumns: `repeat(${maxRacksPerRow}, max-content)` } : undefined
         }
@@ -258,18 +254,27 @@ function RacksGrid({
       }`}
       style={DOTTED_GRID_STYLE}
     >
-      {tabsSlot}
-
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
+      {/*
+        Tabs (when present) and the fullscreen toggle share one row at the
+        top right of the canvas, so the toggle reads as acting on the whole
+        canvas rather than on whichever tab happens to be active.
+      */}
+      <div className={`mb-3 flex items-center justify-between gap-2 ${tabsSlot ? 'border-b border-gray-200' : ''}`}>
+        {tabsSlot}
         <button
           type="button"
           onClick={toggleFullscreen}
           aria-pressed={isFullscreen}
-          className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          className="shrink-0 rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50"
         >
-          {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </button>
+      </div>
+
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
       </div>
 
       {filtering ? (
@@ -279,7 +284,16 @@ function RacksGrid({
       ) : null}
 
       <div className="flex items-start gap-4">
-        {mainContent}
+        {/*
+          flex-1 so this takes all the width left over after the sidebar's
+          fixed 260px, and justify-center so the rack strip (or flat node
+          grid) centers within *that* space rather than the whole canvas —
+          centering against the canvas width would look off-center once the
+          sidebar is factored in. min-w-0 lets it shrink below its content's
+          width so the rack strip still scrolls horizontally instead of
+          pushing the sidebar out.
+        */}
+        <div className="flex min-w-0 flex-1 justify-center">{mainContent}</div>
 
         {/*
           Pinned to the canvas's own right edge via `sticky` + `right-0`:
@@ -299,9 +313,6 @@ function RacksGrid({
             onColorModeChange={onColorModeChange}
             density={density}
             onDensityChange={onDensityChange}
-            combinedView={combinedView}
-            onCombinedViewChange={onCombinedViewChange}
-            combinedViewAvailable={combinedViewAvailable}
           />
           <Legend nodes={legendNodes} colorMode={colorMode} />
           <NodeDetailPanel node={activeNode} onClose={onCloseDetail} />

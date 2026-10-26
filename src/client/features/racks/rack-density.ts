@@ -1,7 +1,7 @@
 // View toggle for the rack elevation (RacksFilters.tsx "View" select):
 // "full" draws every rack to the full rackHeight at a comfortably large
 // unit size, so racks share one scale and nodes stay easy to click —
-// tall racks need their own scrollbox to fit on screen (see PodSection.tsx).
+// tall racks need their own scrollbox to fit on screen (see RacksGrid.tsx).
 // "compact" trims each rack down to only the units its boxes occupy and
 // draws at a smaller unit size, trading the shared scale and some click-
 // target size for a much shorter view that more often needs no scrolling

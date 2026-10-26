@@ -1,5 +1,29 @@
 import { RACK_NODE_STATUS_CLASSES, RACK_NODE_STATUS_LABELS, rackNodeStatus } from './rack-status.ts';
-import type { TopologyNodeDto } from '../../../shared/api/v1/topology.ts';
+import type { TopologyNodeDto, TopologyRackDto } from '../../../shared/api/v1/topology.ts';
+
+// Rack-enclosure classification (distinct from the per-node colorMode
+// above): a rack is "gpu" if any node it holds has a GPU, "cpu" otherwise.
+// Used to tint the rack's own frame in RackColumn.tsx, not the node boxes
+// inside it.
+type RackHardwareKind = 'gpu' | 'cpu';
+
+const RACK_HARDWARE_BORDER_CLASSES: Record<RackHardwareKind, string> = {
+  gpu: 'border-emerald-600 bg-emerald-950',
+  cpu: 'border-sky-600 bg-sky-950',
+};
+
+// Background-only variant for surfaces nested inside the frame above (the
+// empty-segment filler in RackColumn.tsx) that would otherwise paint over
+// it with the neutral slate background.
+const RACK_HARDWARE_BG_CLASSES: Record<RackHardwareKind, string> = {
+  gpu: 'bg-emerald-950',
+  cpu: 'bg-sky-950',
+};
+
+function rackHardwareKind(rack: TopologyRackDto): RackHardwareKind {
+  const hasGpu = rack.boxes.some((box) => box.nodes.some((node) => (node.gpus ?? 0) > 0));
+  return hasGpu ? 'gpu' : 'cpu';
+}
 
 // Color-mode toggle pulled forward from the 3-D plan (milestone-3d-view.md
 // lists status / CPU load / memory / GPU as color modes; Meeting 4 asked
@@ -51,5 +75,15 @@ function nodeColorLabel(node: TopologyNodeDto, mode: ColorMode): string {
   return mode === 'status' ? RACK_NODE_STATUS_LABELS[rackNodeStatus(node)] : LOAD_LABELS[loadLegendKey(node)];
 }
 
-export { LOAD_CLASSES, LOAD_LABELS, LOAD_LEGEND_KEYS, loadLegendKey, nodeColorClass, nodeColorLabel };
-export type { ColorMode, LoadLegendKey };
+export {
+  LOAD_CLASSES,
+  LOAD_LABELS,
+  LOAD_LEGEND_KEYS,
+  loadLegendKey,
+  nodeColorClass,
+  nodeColorLabel,
+  RACK_HARDWARE_BG_CLASSES,
+  RACK_HARDWARE_BORDER_CLASSES,
+  rackHardwareKind,
+};
+export type { ColorMode, LoadLegendKey, RackHardwareKind };

@@ -68,6 +68,8 @@ describe('runtime config topology', () => {
 
         expect(load(dir).topology).toEqual({
             rackHeight: 42,
+            maxRacksPerRow: 6,
+            load: { gradientSteps: 16 },
             pods: [{
                 name: 'Compute',
                 racks: [{

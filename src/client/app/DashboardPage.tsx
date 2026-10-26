@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import { JobsSection } from '../features/jobs/JobsSection.tsx';
 import { RacksSection } from '../features/racks/RacksSection.tsx';
 import { StatsDashboard } from '../features/stats/StatsDashboard.tsx';
@@ -18,6 +19,9 @@ function DashboardPage() {
             <a href="#job-queue" className="transition hover:opacity-80">
               Queue
             </a>
+            <Link to="/settings" className="transition hover:opacity-80">
+              Settings
+            </Link>
           </div>
         }
       />

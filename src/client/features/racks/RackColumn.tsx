@@ -15,6 +15,10 @@ interface RackColumnProps {
   filters: RackFilters;
   activeNode: TopologyNodeDto | null;
   onSelect: (node: TopologyNodeDto) => void;
+  // Set only in the combined view, where racks from several pods sit side
+  // by side and the pod name disambiguates them (PodSection's own tab/
+  // heading already does this, so it's redundant there).
+  podName?: string;
 }
 
 // One physical rack: boxes stacked bottom-up by unit position, with empty
@@ -30,7 +34,7 @@ interface RackColumnProps {
 // PodSection.tsx) — deliberately no scroll-snap there, since mandatory
 // snapping across many wide racks fights scroll momentum and feels laggy
 // rather than smooth.
-function RackColumn({ rack, rackHeight, density, colorMode, search, filters, activeNode, onSelect }: RackColumnProps) {
+function RackColumn({ rack, rackHeight, density, colorMode, search, filters, activeNode, onSelect, podName }: RackColumnProps) {
   const range = density === 'compact' ? occupiedRange(rack.boxes) ?? { start: 1, end: rackHeight } : { start: 1, end: rackHeight };
   // Segments come back bottom-up (unit 1 first); the rack's physical top is
   // its highest unit, so render in reverse for a top-down DOM order.
@@ -39,6 +43,9 @@ function RackColumn({ rack, rackHeight, density, colorMode, search, filters, act
   const unitHeightPx = UNIT_HEIGHT_PX[density];
   return (
     <figure className="flex shrink-0 flex-col items-center gap-0">
+      {podName !== undefined ? (
+        <span className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">{podName}</span>
+      ) : null}
       <figcaption className="mb-1.5 flex items-center gap-1.5 rounded-full bg-slate-800 px-3 py-0.5 text-xs font-semibold tracking-wide text-slate-100 shadow">
         {rack.id}
         {density === 'compact' ? (

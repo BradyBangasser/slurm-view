@@ -88,6 +88,9 @@ describe('runtime config loader', () => {
                     title: 'Slurm View',
                     color: '#0f766e'
                 }
+            },
+            features: {
+                snapshotHistory: false
             }
         });
     });

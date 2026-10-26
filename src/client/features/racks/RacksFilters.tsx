@@ -13,8 +13,18 @@ interface RacksFiltersProps {
   onColorModeChange: (mode: ColorMode) => void;
   density: RackDensity;
   onDensityChange: (density: RackDensity) => void;
+  combinedView: boolean;
+  onCombinedViewChange: (combined: boolean) => void;
+  // Hidden when there's only one pod (or none) — nothing to combine.
+  combinedViewAvailable: boolean;
 }
 
+// A vertical stack, for the pod view's right-hand filter column
+// (PodView.tsx) — not a horizontal bar above the racks. There's only one
+// caller, so this doesn't take an orientation prop; if a horizontal layout
+// is ever needed elsewhere, that's a reason to add one back, not to guess at
+// it now.
+//
 // Search dims non-matching nodes rather than removing them, so rack
 // positions stay put (decision recorded in milestone-3d-view.md).
 function RacksFilters({
@@ -27,9 +37,25 @@ function RacksFilters({
   onColorModeChange,
   density,
   onDensityChange,
+  combinedView,
+  onCombinedViewChange,
+  combinedViewAvailable,
 }: RacksFiltersProps) {
   return (
-    <div className="flex flex-wrap items-end gap-4">
+    <div className="flex flex-col gap-3">
+      {combinedViewAvailable ? (
+        <span className="flex flex-col text-sm text-gray-700">
+          Layout
+          <label className="mt-1 flex items-center gap-1.5 rounded border border-gray-300 px-2 py-1 text-sm">
+            <input
+              type="checkbox"
+              checked={combinedView}
+              onChange={(event) => onCombinedViewChange(event.target.checked)}
+            />
+            Combined view
+          </label>
+        </span>
+      ) : null}
       <label className="flex flex-col text-sm text-gray-700">
         View
         <select

@@ -31,6 +31,7 @@ const navbarSchema = z.object({
 // rack unit. A box's `name` is a Slurm hostlist so a multi-node chassis
 // is one line ("nova22-[1-4]").
 const DEFAULT_RACK_HEIGHT = 42;
+const DEFAULT_MAX_RACKS_PER_ROW = 6;
 
 const topologyBoxSchema = z.object({
     name: z.string().trim().min(1),
@@ -51,8 +52,23 @@ const topologyPodSchema = z.object({
 
 const topologyPodsSchema = z.array(topologyPodSchema);
 
+const topologyLoadSchema = z.object({
+    gradientSteps: z.number().int().min(2).max(64).default(16)
+}).strict();
+
+// A rack id (per-user ordering preference); not validated against the
+// site's actual `topology.pods` here, since this schema has no knowledge
+// of them yet when a user config file is parsed in isolation.
+const rackOrderSchema = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/)).max(200);
+
 const topologySchema = z.object({
     rackHeight: z.number().int().min(1).max(64).default(DEFAULT_RACK_HEIGHT),
+    maxRacksPerRow: z.number().int().min(1).max(20).default(DEFAULT_MAX_RACKS_PER_ROW),
+    // Per-user display order for racks (drag-to-reorder), by rack id. Absent
+    // or listing unknown ids just means "no preference yet" / "stale ids" —
+    // the frontend falls back to layout order for anything not listed.
+    rackOrder: rackOrderSchema.optional(),
+    load: topologyLoadSchema.default({ gradientSteps: 16 }),
     pods: topologyPodsSchema
 }).strict();
 
@@ -118,6 +134,10 @@ function validateTopology(topology: TopologyConfig, ctx: z.RefinementCtx): void 
     });
 }
 
+const featuresSchema = z.object({
+    snapshotHistory: z.boolean().default(false)
+}).strict();
+
 const runtimeConfigSchema = z.object({
     stats: z.object({
         cpuLoad: z.object({
@@ -132,7 +152,8 @@ const runtimeConfigSchema = z.object({
         }).strict(),
         navbar: navbarSchema
     }).strict(),
-    topology: topologySchema.optional()
+    topology: topologySchema.optional(),
+    features: featuresSchema.default({ snapshotHistory: false })
 }).strict().superRefine((value, ctx) => {
     if (value.stats.cpuLoad.thresholds.lowMax >= value.stats.cpuLoad.thresholds.mediumMax) {
         ctx.addIssue({
@@ -179,9 +200,125 @@ const runtimeConfigPartialSchema = z.object({
     // that sets it; racks are not combined across files.
     topology: z.object({
         rackHeight: z.number().int().min(1).max(64).optional(),
+        maxRacksPerRow: z.number().int().min(1).max(20).optional(),
+        rackOrder: rackOrderSchema.optional(),
+        load: z.object({
+            gradientSteps: z.number().int().min(2).max(64).optional()
+        }).strict().optional(),
         pods: topologyPodsSchema.optional()
+    }).strict().optional(),
+    features: z.object({
+        snapshotHistory: z.boolean().optional()
     }).strict().optional()
 }).strict();
+
+// Deliberately narrow: what a logged-in viewer may write back to their own
+// `~/.local/slurm-view/config.d` override, via PATCH /api/v1/ui-settings.
+// This is a SUBSET of runtimeConfigPartialSchema, not an alias of it — keys
+// like `topology.pods` (the site's physical layout) are never listed here,
+// so a user-initiated write can't reach them even though they're otherwise
+// valid partial-schema keys. Extend this schema, not the route handler,
+// when a new setting becomes user-writable.
+const userWritableChartSchema = z.object({
+    showSecondaryLayer: z.boolean().optional()
+}).strict();
+
+const userWritableConfigSchema = z.object({
+    topology: z.object({
+        maxRacksPerRow: z.number().int().min(1).max(20).optional(),
+        rackOrder: rackOrderSchema.optional()
+    }).strict().optional(),
+    ui: z.object({
+        charts: z.object({
+            cpu: userWritableChartSchema.optional(),
+            memory: userWritableChartSchema.optional(),
+            gpu: userWritableChartSchema.optional()
+        }).strict().optional()
+    }).strict().optional()
+}).strict();
+
+type UserWritableConfig = z.infer<typeof userWritableConfigSchema>;
+
+const USER_OVERRIDE_FILE_NAME = 'ui-overrides.yaml';
+
+function getUserOverrideFilePath(userConfigDir: string = USER_CONFIG_DIR_PATH): string {
+    return path.join(userConfigDir, USER_OVERRIDE_FILE_NAME);
+}
+
+function readYamlObjectFile(filePath: string): Record<string, unknown> {
+    if (!fs.existsSync(filePath)) {
+        return {};
+    }
+
+    const parsed: unknown = YAML.parse(fs.readFileSync(filePath, 'utf8'));
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+    }
+
+    return parsed as Record<string, unknown>;
+}
+
+function deepMergeOverride(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+    const output: Record<string, unknown> = { ...base };
+
+    Object.keys(override).forEach((key) => {
+        const baseValue = output[key];
+        const overrideValue = override[key];
+
+        if (
+            baseValue &&
+            overrideValue &&
+            typeof baseValue === 'object' &&
+            typeof overrideValue === 'object' &&
+            !Array.isArray(baseValue) &&
+            !Array.isArray(overrideValue)
+        ) {
+            output[key] = deepMergeOverride(
+                baseValue as Record<string, unknown>,
+                overrideValue as Record<string, unknown>
+            );
+            return;
+        }
+
+        output[key] = overrideValue;
+    });
+
+    return output;
+}
+
+// Validates `update` against the user-writable subset, merges it into the
+// viewer's own ui-overrides.yaml (creating it on first use), and reloads +
+// re-validates the full merged config (site + every user file) so a bad
+// write is caught the same way a bad admin edit would be. On failure the
+// previous file content is restored and the in-memory config stays valid.
+function writeUserConfigOverride(update: unknown, options: LoadOptions = undefined): RuntimeConfig {
+    const validatedUpdate = userWritableConfigSchema.parse(update) as UserWritableConfig;
+    const { userConfigDir } = normalizeLoadOptions(options);
+    const resolvedUserConfigDir = userConfigDir ?? USER_CONFIG_DIR_PATH;
+
+    fs.mkdirSync(resolvedUserConfigDir, { recursive: true });
+    const filePath = getUserOverrideFilePath(resolvedUserConfigDir);
+
+    const existing = readYamlObjectFile(filePath);
+    const merged = deepMergeOverride(existing, validatedUpdate as Record<string, unknown>);
+    const backupContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : null;
+
+    const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tmpPath, YAML.stringify(merged), 'utf8');
+    fs.renameSync(tmpPath, filePath);
+
+    try {
+        return loadRuntimeConfig(options);
+    } catch (error) {
+        if (backupContent === null) {
+            fs.rmSync(filePath, { force: true });
+        } else {
+            fs.writeFileSync(filePath, backupContent, 'utf8');
+        }
+        loadRuntimeConfig(options);
+        throw error;
+    }
+}
 
 let loadedConfig: RuntimeConfig | null = null;
 
@@ -393,13 +530,18 @@ function resetRuntimeConfigForTests(): void {
 
 export {
     DEFAULT_RACK_HEIGHT,
+    DEFAULT_MAX_RACKS_PER_ROW,
     SYSTEM_CONFIG_DIR_PATH,
     USER_CONFIG_DIR_PATH,
+    USER_OVERRIDE_FILE_NAME,
     initializeRuntimeConfig,
     getRuntimeConfig,
     loadRuntimeConfig,
+    writeUserConfigOverride,
+    getUserOverrideFilePath,
     resetRuntimeConfigForTests,
     runtimeConfigSchema,
-    runtimeConfigPartialSchema
+    runtimeConfigPartialSchema,
+    userWritableConfigSchema
 };
-export type { RuntimeConfig, CpuLoadThresholds, TopologyConfig };
+export type { RuntimeConfig, CpuLoadThresholds, TopologyConfig, UserWritableConfig };

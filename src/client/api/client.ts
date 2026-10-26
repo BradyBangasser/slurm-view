@@ -69,7 +69,28 @@ async function fetchJson<T>(url: string, options: { signal?: AbortSignal } = {})
   return (await response.json()) as T;
 }
 
-export { ApiError, errorMessage, fetchJson };
+async function patchJson<T>(url: string, body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'PATCH',
+      signal: options.signal,
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error;
+    }
+    throw new ApiError('FETCH_FAILED', 0, error instanceof Error ? error.message : String(error));
+  }
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+  return (await response.json()) as T;
+}
+
+export { ApiError, errorMessage, fetchJson, patchJson };
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.detail ?? error.message;

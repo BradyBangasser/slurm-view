@@ -97,6 +97,31 @@ function setupFetch(overrides: { handler?: () => unknown; fail?: boolean } = {})
   return fetchMock;
 }
 
+// Routes by URL, unlike setupFetch() above, which returns the same topology
+// body no matter what's requested. Needed to test the ui-settings-driven
+// preferences (maxRacksPerRow, rackOrder), since RacksSection now fetches
+// both /topology and /ui-settings.
+function setupFetchByUrl(uiSettingsTopology: { maxRacksPerRow: number; rackOrder: string[] }) {
+  const fetchMock = jest.fn((url: string) => {
+    if (url.includes('ui-settings')) {
+      return Promise.resolve(
+        okJson({
+          charts: {
+            cpu: { showSecondaryLayer: true },
+            memory: { showSecondaryLayer: true },
+            gpu: { showSecondaryLayer: true },
+          },
+          navbar: { enabled: true, title: 'Slurm View', color: '#0f766e' },
+          topology: uiSettingsTopology,
+        }),
+      );
+    }
+    return Promise.resolve(okJson(TOPOLOGY_BODY));
+  });
+  global.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
 function renderSection() {
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
@@ -250,6 +275,96 @@ describe('RacksSection', () => {
     await waitFor(() => expect(screen.getByText(/No rack layout is configured/)).toBeTruthy());
     expect(screen.getByText(/Unplaced nodes/)).toBeTruthy();
     expect(screen.queryByText('BD31')).toBeNull();
+  });
+
+  test('combined view pulls every pod\'s racks into one view, no tabs', async () => {
+    setupFetch();
+    renderSection();
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
+    // Single-pod tabs are the default; the other pod's rack isn't shown.
+    expect(screen.queryByText('AD46')).toBeNull();
+
+    await user.click(screen.getByLabelText('Combined view'));
+
+    // Both pods' racks now render together, and the tabs are gone.
+    expect(screen.getByText('BD31')).toBeTruthy();
+    expect(screen.getByText('AD46')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Compute pod' })).toBeNull();
+    // Each rack is labeled with its pod name, since there's no tab heading
+    // to disambiguate them anymore.
+    expect(screen.getByText('Compute')).toBeTruthy();
+    expect(screen.getByText('GPU')).toBeTruthy();
+    // Unplaced nodes still show, now inline rather than on their own tab.
+    expect(screen.getByText(/Unplaced nodes/)).toBeTruthy();
+    expect(screen.getByLabelText('nova1-99: Idle')).toBeTruthy();
+
+    await user.click(screen.getByLabelText('Combined view'));
+    expect(screen.queryByText('AD46')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Compute pod' })).toBeTruthy();
+  });
+
+  test("combined view applies the user's saved rack order from ui-settings", async () => {
+    setupFetchByUrl({ maxRacksPerRow: 6, rackOrder: ['AD46', 'BD31'] });
+    renderSection();
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
+    await user.click(screen.getByLabelText('Combined view'));
+    await waitFor(() => expect(screen.getByText('AD46')).toBeTruthy());
+
+    // Default order is Compute (BD31) before GPU (AD46), alphabetically by
+    // pod name; the saved rackOrder puts AD46 first instead.
+    const rackLabels = screen.getAllByLabelText(/^Rack /).map((element) => element.getAttribute('aria-label'));
+    expect(rackLabels).toEqual(['Rack AD46', 'Rack BD31']);
+  });
+
+  test('combined view toggle is hidden when there is only one pod', async () => {
+    setupFetch({
+      handler: () => ({
+        ...TOPOLOGY_BODY,
+        pods: [TOPOLOGY_BODY.pods[0]],
+      }),
+    });
+    renderSection();
+
+    await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
+    expect(screen.queryByLabelText('Combined view')).toBeNull();
+  });
+
+  test('fullscreen button toggles a viewport-filling layout (jsdom has no real Fullscreen API)', async () => {
+    setupFetch();
+    renderSection();
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
+
+    const button = screen.getByRole('button', { name: 'Fullscreen' });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+
+    // jsdom doesn't implement Element.requestFullscreen, so this exercises
+    // the CSS-fallback path (see PodView.tsx's toggleFullscreen) rather than
+    // the real Fullscreen API — the fallback exists for exactly
+    // environments where that API is unavailable or refused.
+    await user.click(button);
+    expect(screen.getByRole('button', { name: 'Exit fullscreen' }).getAttribute('aria-pressed')).toBe('true');
+
+    await user.click(screen.getByRole('button', { name: 'Exit fullscreen' }));
+    expect(screen.getByRole('button', { name: 'Fullscreen' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  test('Escape exits the CSS-fallback fullscreen mode', async () => {
+    setupFetch();
+    renderSection();
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText('BD31')).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: 'Fullscreen' }));
+    expect(screen.getByRole('button', { name: 'Exit fullscreen' })).toBeTruthy();
+
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: 'Fullscreen' })).toBeTruthy();
   });
 
   test('fetch failure surfaces a retryable panel', async () => {

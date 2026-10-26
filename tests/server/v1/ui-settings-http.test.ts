@@ -18,6 +18,10 @@ describe('GET /api/v1/ui-settings', () => {
       title: expect.any(String),
       color: expect.any(String),
     });
+    expect(res.body.topology).toEqual({
+      maxRacksPerRow: expect.any(Number),
+      rackOrder: expect.any(Array),
+    });
     // No raw config surface: thresholds, file paths, or merge details.
     expect(JSON.stringify(res.body)).not.toContain('threshold');
     expect(JSON.stringify(res.body)).not.toContain('config.d');

@@ -1,5 +1,5 @@
-import type { ColorMode } from './rack-color.ts';
-import { LOAD_CLASSES, LOAD_LABELS, LOAD_LEGEND_KEYS, loadLegendKey } from './rack-color.ts';
+import type { ColorMode, LoadScale } from './rack-color.ts';
+import { LOAD_LABELS, LOAD_LEGEND_COLORS, LOAD_LEGEND_KEYS, loadLegendKey } from './rack-color.ts';
 import { RACK_NODE_STATUSES, RACK_NODE_STATUS_CLASSES, RACK_NODE_STATUS_LABELS, rackNodeStatus } from './rack-status.ts';
 import type { RackNodeStatus } from './rack-status.ts';
 import type { LoadLegendKey } from './rack-color.ts';
@@ -11,18 +11,22 @@ import type { TopologyNodeDto } from '../../../shared/api/v1/topology.ts';
 // "load", matching whatever the boxes are actually colored by. A fixed
 // order so it reads the same every render, matching the 2-D/3-D palette
 // note in milestone-3d-view.md.
-function Legend({ nodes, colorMode }: { nodes: TopologyNodeDto[]; colorMode: ColorMode }) {
+function Legend({ nodes, colorMode, loadScale }: { nodes: TopologyNodeDto[]; colorMode: ColorMode; loadScale: LoadScale }) {
   if (colorMode === 'load') {
     const counts = new Map<LoadLegendKey, number>();
     for (const node of nodes) {
-      const key = loadLegendKey(node);
+      const key = loadLegendKey(node, loadScale);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return (
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600" aria-label="Status legend">
         {LOAD_LEGEND_KEYS.map((key) => (
           <li key={key} className="flex items-center gap-1.5">
-            <span className={`inline-block h-3 w-3 rounded-sm border border-black/10 ${LOAD_CLASSES[key]}`} aria-hidden="true" />
+            <span
+              className="inline-block h-3 w-3 rounded-sm border border-black/10"
+              style={{ backgroundColor: LOAD_LEGEND_COLORS[key] }}
+              aria-hidden="true"
+            />
             {LOAD_LABELS[key]}
             <span className="tabular-nums text-gray-400">({counts.get(key) ?? 0})</span>
           </li>

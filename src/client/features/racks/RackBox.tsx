@@ -1,5 +1,5 @@
 import { NodeSlot } from './NodeSlot.tsx';
-import type { ColorMode } from './rack-color.ts';
+import type { ColorMode, LoadScale } from './rack-color.ts';
 import { nodeMatches } from './rack-filters.ts';
 import type { RackFilters } from './rack-filters.ts';
 import type { TopologyBoxDto, TopologyNodeDto } from '../../../shared/api/v1/topology.ts';
@@ -7,6 +7,7 @@ import type { TopologyBoxDto, TopologyNodeDto } from '../../../shared/api/v1/top
 interface RackBoxProps {
   box: TopologyBoxDto;
   colorMode: ColorMode;
+  loadScale: LoadScale;
   search: string;
   filters: RackFilters;
   activeNode: TopologyNodeDto | null;
@@ -16,7 +17,7 @@ interface RackBoxProps {
 // One physical box (one line in racks.yaml): a single node, or several
 // sharing the box when the layout entry is a hostlist (e.g. a 4-node
 // chassis). Each node gets an equal share of the box's width.
-function RackBox({ box, colorMode, search, filters, activeNode, onSelect }: RackBoxProps) {
+function RackBox({ box, colorMode, loadScale, search, filters, activeNode, onSelect }: RackBoxProps) {
   const searching = search.trim() !== '';
   return (
     <div className="flex h-full w-full">
@@ -25,6 +26,7 @@ function RackBox({ box, colorMode, search, filters, activeNode, onSelect }: Rack
           key={node.name}
           node={node}
           colorMode={colorMode}
+          loadScale={loadScale}
           widthFraction={1 / box.nodes.length}
           matches={nodeMatches(node, search, filters)}
           highlighted={searching && nodeMatches(node, search, filters)}

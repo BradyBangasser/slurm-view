@@ -1,5 +1,5 @@
-import { nodeColorClass, nodeColorLabel } from './rack-color.ts';
-import type { ColorMode } from './rack-color.ts';
+import { nodeColorClass, nodeColorLabel, nodeColorStyle } from './rack-color.ts';
+import type { ColorMode, LoadScale } from './rack-color.ts';
 import { nodeMatches } from './rack-filters.ts';
 import type { RackFilters } from './rack-filters.ts';
 import type { TopologyNodeDto } from '../../../shared/api/v1/topology.ts';
@@ -9,6 +9,7 @@ interface NodeGridProps {
   description?: string;
   nodes: TopologyNodeDto[];
   colorMode: ColorMode;
+  loadScale: LoadScale;
   search: string;
   filters: RackFilters;
   activeNode: TopologyNodeDto | null;
@@ -19,7 +20,7 @@ interface NodeGridProps {
 // "Unplaced" group (in Slurm, not in the layout) and, when the site has no
 // `topology` config at all, every node (see milestone-3d-view.md FE-3's
 // "no layout configured" state).
-function NodeGrid({ title, description, nodes, colorMode, search, filters, activeNode, onSelect }: NodeGridProps) {
+function NodeGrid({ title, description, nodes, colorMode, loadScale, search, filters, activeNode, onSelect }: NodeGridProps) {
   if (nodes.length === 0) {
     return null;
   }
@@ -39,9 +40,10 @@ function NodeGrid({ title, description, nodes, colorMode, search, filters, activ
               key={node.name}
               type="button"
               role="listitem"
-              aria-label={`${node.name}: ${nodeColorLabel(node, colorMode)}`}
+              aria-label={`${node.name}: ${nodeColorLabel(node, colorMode, loadScale)}`}
               aria-pressed={active}
               onClick={() => onSelect(node)}
+              style={nodeColorStyle(node, colorMode, loadScale)}
               className={`h-8 w-28 truncate rounded-sm border border-black/10 px-1.5 text-left text-xs font-mono text-slate-900 outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-sky-400 ${nodeColorClass(node, colorMode)} ${matches ? '' : 'opacity-20 saturate-50'} ${searching && matches ? 'ring-2 ring-sky-400' : ''} ${active ? 'ring-2 ring-slate-900' : ''}`}
             >
               {node.name}

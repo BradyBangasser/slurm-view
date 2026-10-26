@@ -1,16 +1,10 @@
 import { expandSlurmHostlist } from '../adapters/slurm/hostlist.js';
-import { DEFAULT_RACK_HEIGHT } from '../config/runtime-config.js';
+import { DEFAULT_LOAD_GRADIENT_STEPS, DEFAULT_RACK_HEIGHT } from '../config/runtime-config.js';
 import type { TopologyConfig } from '../config/runtime-config.js';
 import { nodeAvailability } from '../models/node.js';
 import type { ClusterNode } from '../models/node.js';
-import { classifyCpuLoadBucket } from '../models/stats.js';
 import type { CpuLoadThresholds } from '../models/stats.js';
-import type {
-  TopologyCpuLoadBucket,
-  TopologyNodeDto,
-  TopologyPodDto,
-  TopologyRackDto,
-} from '../../shared/api/v1/topology.js';
+import type { TopologyNodeDto, TopologyPodDto, TopologyRackDto } from '../../shared/api/v1/topology.js';
 import type { StatsSource } from './stats-service.js';
 
 // Joins the configured rack layout with one node snapshot. Reads the
@@ -18,6 +12,8 @@ import type { StatsSource } from './stats-service.js';
 interface TopologyResult {
   configured: boolean;
   rackHeight: number;
+  loadThresholds: CpuLoadThresholds;
+  loadGradientSteps: number;
   pods: TopologyPodDto[];
   unplaced: TopologyNodeDto[];
   updatedAt: Date;
@@ -33,18 +29,22 @@ function parseRackGrid(rackId: string): TopologyRackDto['grid'] {
   return { row: (match[1] ?? '').toUpperCase(), column: Number.parseInt(match[2] ?? '', 10) };
 }
 
-// Mirrors summarizeCpu so a rack cell and the CPU chart agree on "busy".
-function nodeCpuLoadBucket(node: ClusterNode, thresholds: CpuLoadThresholds): TopologyCpuLoadBucket | null {
+// The raw per-allocated-CPU load ratio, unbucketed — callers (the rack
+// view's load color mode, the detail panel) grade it themselves against
+// TopologyResponse.loadThresholds / loadGradientSteps. Null whenever there
+// is no load number to show: down, nothing allocated, or Slurm reports no
+// load.
+function nodeCpuLoadRatio(node: ClusterNode): number | null {
   if (nodeAvailability(node.state, node.stateFlags) === 'down') {
     return null;
   }
   if (node.allocCpus <= 0 || node.cpuLoad === null) {
     return null;
   }
-  return classifyCpuLoadBucket(node.cpuLoad / node.allocCpus, thresholds);
+  return node.cpuLoad / node.allocCpus;
 }
 
-function toTopologyNode(node: ClusterNode, thresholds: CpuLoadThresholds): TopologyNodeDto {
+function toTopologyNode(node: ClusterNode): TopologyNodeDto {
   return {
     name: node.name,
     inSlurm: true,
@@ -55,7 +55,7 @@ function toTopologyNode(node: ClusterNode, thresholds: CpuLoadThresholds): Topol
     partitions: [...node.partitions],
     cpus: node.cpus,
     allocCpus: node.allocCpus,
-    cpuLoadBucket: nodeCpuLoadBucket(node, thresholds),
+    cpuLoadRatio: nodeCpuLoadRatio(node),
     totalMemoryMiB: node.totalMemoryMiB,
     allocMemoryMiB: node.allocMemoryMiB,
     gpus: node.gpuInventoryKnown ? node.gpu.total : null,
@@ -74,7 +74,7 @@ function missingTopologyNode(name: string): TopologyNodeDto {
     partitions: [],
     cpus: null,
     allocCpus: null,
-    cpuLoadBucket: null,
+    cpuLoadRatio: null,
     totalMemoryMiB: null,
     allocMemoryMiB: null,
     gpus: null,
@@ -89,6 +89,7 @@ function buildTopology(
 ): Omit<TopologyResult, 'updatedAt'> {
   const byName = new Map(nodes.map((node) => [node.name, node]));
   const placed = new Set<string>();
+  const gradientSteps = topology?.load?.gradientSteps ?? DEFAULT_LOAD_GRADIENT_STEPS;
 
   const pods: TopologyPodDto[] = (topology?.pods ?? []).map((pod) => ({
     name: pod.name,
@@ -102,7 +103,7 @@ function buildTopology(
         nodes: expandSlurmHostlist(box.name).map((name) => {
           placed.add(name);
           const node = byName.get(name);
-          return node ? toTopologyNode(node, thresholds) : missingTopologyNode(name);
+          return node ? toTopologyNode(node) : missingTopologyNode(name);
         }),
       })),
     })),
@@ -110,12 +111,14 @@ function buildTopology(
 
   const unplaced = nodes
     .filter((node) => !placed.has(node.name))
-    .map((node) => toTopologyNode(node, thresholds))
+    .map((node) => toTopologyNode(node))
     .sort((left, right) => left.name.localeCompare(right.name));
 
   return {
     configured: topology !== undefined,
     rackHeight: topology?.rackHeight ?? DEFAULT_RACK_HEIGHT,
+    loadThresholds: thresholds,
+    loadGradientSteps: gradientSteps,
     pods,
     unplaced,
   };

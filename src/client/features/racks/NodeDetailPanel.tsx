@@ -70,7 +70,7 @@ function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps) {
           />
           <DetailRow
             label="CPU load"
-            value={node.cpuLoadBucket === null ? '—' : node.cpuLoadBucket}
+            value={node.cpuLoadRatio === null ? '—' : `${Math.round(node.cpuLoadRatio * 100)}%`}
           />
           <DetailRow
             label="Memory"

@@ -19,6 +19,7 @@ function renderGrid(props: Partial<Parameters<typeof RacksGrid>[0]> = {}) {
       onDensityChange={() => {}}
       colorMode="status"
       onColorModeChange={() => {}}
+      loadScale={{ thresholds: { lowMax: 0.33, mediumMax: 0.66 }, steps: 16 }}
       search=""
       onSearchChange={() => {}}
       filters={DEFAULT_RACK_FILTERS}
@@ -115,7 +116,7 @@ describe('RacksGrid dotted background', () => {
           partitions: [],
           cpus: 4,
           allocCpus: 0,
-          cpuLoadBucket: null,
+          cpuLoadRatio: null,
           totalMemoryMiB: 1000,
           allocMemoryMiB: 0,
           gpus: 0,

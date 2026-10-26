@@ -4,8 +4,8 @@ import type { ReactNode } from 'react';
 import { Legend } from './Legend.tsx';
 import { NodeDetailPanel } from './NodeDetailPanel.tsx';
 import { RackColumn } from './RackColumn.tsx';
-import type { ColorMode } from './rack-color.ts';
-import { nodeColorClass, nodeColorLabel } from './rack-color.ts';
+import type { ColorMode, LoadScale } from './rack-color.ts';
+import { nodeColorClass, nodeColorLabel, nodeColorStyle } from './rack-color.ts';
 import type { RackDensity } from './rack-density.ts';
 import { RacksFilters } from './RacksFilters.tsx';
 import { nodeMatches } from './rack-filters.ts';
@@ -43,6 +43,9 @@ interface RacksGridControlsProps {
   onDensityChange: (density: RackDensity) => void;
   colorMode: ColorMode;
   onColorModeChange: (mode: ColorMode) => void;
+  // Thresholds + step count the load color mode grades `cpuLoadRatio`
+  // against (from `TopologyResponse.loadThresholds`/`loadGradientSteps`).
+  loadScale: LoadScale;
   search: string;
   onSearchChange: (value: string) => void;
   filters: RackFilters;
@@ -118,6 +121,7 @@ function RacksGrid({
   onDensityChange,
   colorMode,
   onColorModeChange,
+  loadScale,
   search,
   onSearchChange,
   filters,
@@ -200,6 +204,7 @@ function RacksGrid({
             rackHeight={rackHeight}
             density={density}
             colorMode={colorMode}
+            loadScale={loadScale}
             search={search}
             filters={filters}
             activeNode={activeNode}
@@ -225,9 +230,10 @@ function RacksGrid({
                 key={node.name}
                 type="button"
                 role="listitem"
-                aria-label={`${node.name}: ${nodeColorLabel(node, colorMode)}`}
+                aria-label={`${node.name}: ${nodeColorLabel(node, colorMode, loadScale)}`}
                 aria-pressed={active}
                 onClick={() => onSelect(node)}
+                style={nodeColorStyle(node, colorMode, loadScale)}
                 className={`h-8 w-28 truncate rounded-sm border border-black/10 px-1.5 text-left text-xs font-mono text-slate-900 outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-sky-400 ${nodeColorClass(node, colorMode)} ${matches ? '' : 'opacity-20 saturate-50'} ${searching && matches ? 'ring-2 ring-sky-400' : ''} ${active ? 'ring-2 ring-slate-900' : ''}`}
               >
                 {node.name}
@@ -314,7 +320,7 @@ function RacksGrid({
             density={density}
             onDensityChange={onDensityChange}
           />
-          <Legend nodes={legendNodes} colorMode={colorMode} />
+          <Legend nodes={legendNodes} colorMode={colorMode} loadScale={loadScale} />
           <NodeDetailPanel node={activeNode} onClose={onCloseDetail} />
         </div>
       </div>

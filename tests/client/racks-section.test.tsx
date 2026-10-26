@@ -28,7 +28,7 @@ function node(overrides: Partial<TopologyNodeDto> = {}): TopologyNodeDto {
     partitions: ['nova'],
     cpus: 64,
     allocCpus: 0,
-    cpuLoadBucket: null,
+    cpuLoadRatio: null,
     totalMemoryMiB: 256000,
     allocMemoryMiB: 0,
     gpus: 0,
@@ -40,6 +40,8 @@ function node(overrides: Partial<TopologyNodeDto> = {}): TopologyNodeDto {
 const TOPOLOGY_BODY: TopologyResponse = {
   configured: true,
   rackHeight: 42,
+  loadThresholds: { lowMax: 0.33, mediumMax: 0.66 },
+  loadGradientSteps: 16,
   pods: [
     {
       name: 'Compute',
@@ -52,7 +54,9 @@ const TOPOLOGY_BODY: TopologyResponse = {
               u: 1,
               height: 1,
               label: 'nova1-1',
-              nodes: [node({ name: 'nova1-1', state: 'ALLOCATED', allocCpus: 64, cpuLoadBucket: 'high' })],
+              // ratio 1.0 against mediumMax 0.66 (extremeMax 1.32): grades
+              // to step 12 of 16 (fraction 12/15 ≈ 0.8) → "High load".
+              nodes: [node({ name: 'nova1-1', state: 'ALLOCATED', allocCpus: 64, cpuLoadRatio: 1.0 })],
             },
             {
               u: 3,
@@ -176,7 +180,7 @@ describe('RacksSection', () => {
 
     await waitFor(() => expect(screen.getByRole('region', { name: 'Details for nova1-1' })).toBeTruthy());
     expect(screen.getByText('64 / 64')).toBeTruthy();
-    expect(screen.getByText('high')).toBeTruthy();
+    expect(screen.getByText('100%')).toBeTruthy();
   });
 
   test('not-in-Slurm node shows the retired/typo note instead of live fields', async () => {
@@ -215,16 +219,20 @@ describe('RacksSection', () => {
     await waitFor(() => expect(screen.getByLabelText('nova1-1: Allocated')).toBeTruthy());
     await user.selectOptions(screen.getByLabelText('Color by'), 'load');
 
-    // Same nodes, relabeled by load instead of status.
+    // Same nodes, relabeled by load instead of status. nova1-2 isn't
+    // reported by Slurm at all, so it has no load data; nova1-99 (and the
+    // GPU pod's node, both idle with nothing allocated) grade as idle, not
+    // "no data" — idle is a normal state, not a gap in reporting.
     expect(screen.getByLabelText('nova1-1: High load')).toBeTruthy();
     expect(screen.getByLabelText('nova1-2: No load data')).toBeTruthy();
     await user.click(screen.getByRole('tab', { name: 'Unplaced' }));
-    expect(screen.getByLabelText('nova1-99: No load data')).toBeTruthy();
+    expect(screen.getByLabelText('nova1-99: Idle')).toBeTruthy();
 
     // Legend counts are global, independent of which tab is active.
     const legend = screen.getByLabelText('Status legend');
     expect(legend.textContent).toContain('High load(1)');
-    expect(legend.textContent).toContain('No load data(3)');
+    expect(legend.textContent).toContain('Idle(2)');
+    expect(legend.textContent).toContain('No load data(1)');
     // The status-specific entries are gone, not just re-counted.
     expect(legend.textContent).not.toContain('Allocated');
   });
@@ -265,6 +273,8 @@ describe('RacksSection', () => {
       handler: () => ({
         configured: false,
         rackHeight: 42,
+        loadThresholds: { lowMax: 0.33, mediumMax: 0.66 },
+        loadGradientSteps: 16,
         pods: [],
         unplaced: [node({ name: 'nova1-1' }), node({ name: 'nova1-2' })],
         updatedAt: '2026-10-07T12:00:00.000Z',

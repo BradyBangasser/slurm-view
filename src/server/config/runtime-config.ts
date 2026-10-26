@@ -32,6 +32,7 @@ const navbarSchema = z.object({
 // is one line ("nova22-[1-4]").
 const DEFAULT_RACK_HEIGHT = 42;
 const DEFAULT_MAX_RACKS_PER_ROW = 6;
+const DEFAULT_LOAD_GRADIENT_STEPS = 16;
 
 const topologyBoxSchema = z.object({
     name: z.string().trim().min(1),
@@ -53,7 +54,7 @@ const topologyPodSchema = z.object({
 const topologyPodsSchema = z.array(topologyPodSchema);
 
 const topologyLoadSchema = z.object({
-    gradientSteps: z.number().int().min(2).max(64).default(16)
+    gradientSteps: z.number().int().min(2).max(64).default(DEFAULT_LOAD_GRADIENT_STEPS)
 }).strict();
 
 // A rack id (per-user ordering preference); not validated against the
@@ -68,7 +69,7 @@ const topologySchema = z.object({
     // or listing unknown ids just means "no preference yet" / "stale ids" —
     // the frontend falls back to layout order for anything not listed.
     rackOrder: rackOrderSchema.optional(),
-    load: topologyLoadSchema.default({ gradientSteps: 16 }),
+    load: topologyLoadSchema.default({ gradientSteps: DEFAULT_LOAD_GRADIENT_STEPS }),
     pods: topologyPodsSchema
 }).strict();
 
@@ -531,6 +532,7 @@ function resetRuntimeConfigForTests(): void {
 export {
     DEFAULT_RACK_HEIGHT,
     DEFAULT_MAX_RACKS_PER_ROW,
+    DEFAULT_LOAD_GRADIENT_STEPS,
     SYSTEM_CONFIG_DIR_PATH,
     USER_CONFIG_DIR_PATH,
     USER_OVERRIDE_FILE_NAME,

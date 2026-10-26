@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NodeGrid } from './NodeGrid.tsx';
 import { RacksGrid } from './RacksGrid.tsx';
 import type { RacksGridControlsProps } from './RacksGrid.tsx';
-import type { ColorMode } from './rack-color.ts';
+import type { ColorMode, LoadScale } from './rack-color.ts';
 import { DEFAULT_RACK_DENSITY } from './rack-density.ts';
 import type { RackDensity } from './rack-density.ts';
 import { allNodes, DEFAULT_RACK_FILTERS, partitionsIn } from './rack-filters.ts';
@@ -40,6 +40,7 @@ function PodView({ topology, maxRacksPerRow, rackOrder }: PodViewProps) {
   const legendNodes = allNodes(topology);
   const selectedNode: TopologyNodeDto | null = legendNodes.find((node) => node.name === selectedName) ?? null;
   const combinedViewAvailable = topology.pods.length > 1;
+  const loadScale: LoadScale = { thresholds: topology.loadThresholds, steps: topology.loadGradientSteps };
 
   const tabs: { id: SectionTab; label: string }[] = [
     ...topology.pods.map((pod) => ({ id: pod.name, label: `${pod.name} pod` })),
@@ -84,6 +85,7 @@ function PodView({ topology, maxRacksPerRow, rackOrder }: PodViewProps) {
     onDensityChange: setDensity,
     colorMode,
     onColorModeChange: setColorMode,
+    loadScale,
     search,
     onSearchChange: setSearch,
     filters,
@@ -146,6 +148,7 @@ function PodView({ topology, maxRacksPerRow, rackOrder }: PodViewProps) {
           description={topology.configured ? 'Reported by Slurm but not in the rack layout.' : undefined}
           nodes={topology.unplaced}
           colorMode={colorMode}
+          loadScale={loadScale}
           search={search}
           filters={filters}
           activeNode={selectedNode}

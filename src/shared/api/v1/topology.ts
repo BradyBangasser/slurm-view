@@ -2,7 +2,15 @@
 // node state from the shared node snapshot.
 
 export type TopologyNodeAvailability = 'available' | 'restricted' | 'down';
-export type TopologyCpuLoadBucket = 'low' | 'medium' | 'high';
+
+// The same lowMax/mediumMax shape the stats CPU chart grades against
+// (`server/models/stats.ts`'s CpuLoadThresholds), echoed here so a client
+// grading `cpuLoadRatio` into display buckets (e.g. the rack view's
+// weather-radar load color mode) doesn't need its own copy of the config.
+export interface TopologyLoadThresholds {
+  lowMax: number;
+  mediumMax: number;
+}
 
 export interface TopologyNodeDto {
   name: string;
@@ -16,11 +24,14 @@ export interface TopologyNodeDto {
   cpus: number | null;
   allocCpus: number | null;
   /**
-   * CPU load per allocated CPU, bucketed with the same thresholds as the
-   * stats CPU chart. Null when nothing is allocated, the node is down, or
+   * Raw CPU load per allocated CPU (e.g. 0.78 for 78%), not pre-bucketed —
+   * callers grade it themselves against `TopologyResponse.loadThresholds`
+   * (and, for a finer display scale like the rack view's weather-radar load
+   * color mode, `TopologyResponse.loadGradientSteps`). Can exceed 1 under
+   * genuine overload. Null when nothing is allocated, the node is down, or
    * Slurm reports no load.
    */
-  cpuLoadBucket: TopologyCpuLoadBucket | null;
+  cpuLoadRatio: number | null;
   totalMemoryMiB: number | null;
   allocMemoryMiB: number | null;
   gpus: number | null;
@@ -52,6 +63,10 @@ export interface TopologyResponse {
   /** False when the site has no `topology` config; pods is then empty and every node is unplaced. */
   configured: boolean;
   rackHeight: number;
+  /** Thresholds to grade `TopologyNodeDto.cpuLoadRatio` against — the same ones the stats CPU chart uses. */
+  loadThresholds: TopologyLoadThresholds;
+  /** Suggested step count for a discretized load display (e.g. the rack view's gradient); see `cpuLoadRatio`. */
+  loadGradientSteps: number;
   pods: TopologyPodDto[];
   /** Nodes Slurm reports that the layout does not place, sorted by name. */
   unplaced: TopologyNodeDto[];

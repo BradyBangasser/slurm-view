@@ -78,18 +78,20 @@ describe('TopologyService.getTopology', () => {
     expect(gpu02).toMatchObject({ name: 'gpu02', availability: 'restricted', stateFlags: ['DRAIN'] });
   });
 
-  test('buckets CPU load like the stats chart', async () => {
+  test('reports raw CPU load ratio, not a pre-bucketed classification', async () => {
     const result = await serviceFor(LAYOUT).getTopology();
     const [gpu01, gpu02] = result.pods[0]!.racks[0]!.boxes[0]!.nodes;
     const down01 = result.pods[1]!.racks[0]!.boxes[0]!.nodes[0]!;
 
-    // 12.5 load over 16 allocated CPUs is above mediumMax.
-    expect(gpu01!.cpuLoadBucket).toBe('high');
-    // Nothing allocated: no bucket.
-    expect(gpu02!.cpuLoadBucket).toBeNull();
-    // Down nodes never get a bucket.
+    expect(result.loadThresholds).toEqual(DEFAULT_CPU_LOAD_THRESHOLDS);
+    expect(result.loadGradientSteps).toBe(16);
+    // 12.5 load over 16 allocated CPUs.
+    expect(gpu01!.cpuLoadRatio).toBeCloseTo(0.78125);
+    // Nothing allocated: no ratio.
+    expect(gpu02!.cpuLoadRatio).toBeNull();
+    // Down nodes never get a ratio.
     expect(down01.availability).toBe('down');
-    expect(down01.cpuLoadBucket).toBeNull();
+    expect(down01.cpuLoadRatio).toBeNull();
   });
 
   test('a layout name Slurm does not report is kept and marked missing', async () => {
@@ -106,7 +108,7 @@ describe('TopologyService.getTopology', () => {
       partitions: [],
       cpus: null,
       allocCpus: null,
-      cpuLoadBucket: null,
+      cpuLoadRatio: null,
       totalMemoryMiB: null,
       allocMemoryMiB: null,
       gpus: null,

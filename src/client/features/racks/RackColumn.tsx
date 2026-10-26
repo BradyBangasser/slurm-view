@@ -1,6 +1,6 @@
 import { RackBox } from './RackBox.tsx';
 import { RACK_HARDWARE_BG_CLASSES, RACK_HARDWARE_BORDER_CLASSES, rackHardwareKind } from './rack-color.ts';
-import type { ColorMode } from './rack-color.ts';
+import type { ColorMode, LoadScale } from './rack-color.ts';
 import type { RackDensity } from './rack-density.ts';
 import { RACK_WIDTH_PX, UNIT_HEIGHT_PX } from './rack-density.ts';
 import { buildRackSegments, compactSegments, occupiedRange } from './rack-layout.ts';
@@ -12,6 +12,7 @@ interface RackColumnProps {
   rackHeight: number;
   density: RackDensity;
   colorMode: ColorMode;
+  loadScale: LoadScale;
   search: string;
   filters: RackFilters;
   activeNode: TopologyNodeDto | null;
@@ -35,7 +36,7 @@ interface RackColumnProps {
 // RacksGrid.tsx) — deliberately no scroll-snap there, since mandatory
 // snapping across many wide racks fights scroll momentum and feels laggy
 // rather than smooth.
-function RackColumn({ rack, rackHeight, density, colorMode, search, filters, activeNode, onSelect, podName }: RackColumnProps) {
+function RackColumn({ rack, rackHeight, density, colorMode, loadScale, search, filters, activeNode, onSelect, podName }: RackColumnProps) {
   const range = density === 'compact' ? occupiedRange(rack.boxes) ?? { start: 1, end: rackHeight } : { start: 1, end: rackHeight };
   // Segments come back bottom-up (unit 1 first); the rack's physical top is
   // its highest unit, so render in reverse for a top-down DOM order.
@@ -71,6 +72,7 @@ function RackColumn({ rack, rackHeight, density, colorMode, search, filters, act
                 <RackBox
                   box={segment.box}
                   colorMode={colorMode}
+                  loadScale={loadScale}
                   search={search}
                   filters={filters}
                   activeNode={activeNode}

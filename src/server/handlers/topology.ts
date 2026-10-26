@@ -15,6 +15,8 @@ function toTopologyResponse(result: TopologyResult): TopologyResponse {
   return {
     configured: result.configured,
     rackHeight: result.rackHeight,
+    loadThresholds: result.loadThresholds,
+    loadGradientSteps: result.loadGradientSteps,
     pods: result.pods,
     unplaced: result.unplaced,
     updatedAt: result.updatedAt.toISOString(),

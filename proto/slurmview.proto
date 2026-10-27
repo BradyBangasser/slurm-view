@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package slurmview;
+
+// Read-only view of a Slurm cluster.
+//
+// Every call is cached per request: the server hashes the method, the request
+// metadata and the request body, and serves the stored response body from
+// Redis until it expires. The response metadata carries the outcome:
+//   x-slurmview-cache:     hit | miss | bypass
+//   x-slurmview-cache-ttl: seconds until the cached body expires
+service SlurmView {
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc ListPartitions(ListPartitionsRequest) returns (ListPartitionsResponse);
+}
+
+// Not part of the cache key. bypassCache skips the cache read and stores the
+// fresh response, so it doubles as a refresh.
+message CacheParameters {
+  bool bypassCache = 1;
+}
+
+// Slurm encodes unset and unlimited values separately from zero.
+message SlurmNumber {
+  bool set = 1;
+  bool infinite = 2;
+  int64 number = 3;
+}
+
+message ListJobsRequest {
+  optional CacheParameters cacheParams = 1;
+  // squeue state filters (e.g. "R", "PD"). Empty means R,PD,CD.
+  repeated string states = 2;
+  optional string user = 3;
+  optional string partition = 4;
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+}
+
+message GetJobRequest {
+  optional CacheParameters cacheParams = 1;
+  // Job id, or "<arrayJobId>_<arrayTaskId>" for an array task.
+  string jobId = 2;
+}
+
+message GetJobResponse {
+  Job job = 1;
+}
+
+message Job {
+  // "<arrayJobId>_<arrayTaskId>" for array tasks, else the Slurm job id.
+  string id = 1;
+  string jobId = 2;
+  optional string arrayJobId = 3;
+  optional string arrayTaskId = 4;
+  string name = 5;
+  string user = 6;
+  string account = 7;
+  string partition = 8;
+  string qos = 9;
+  // Base state first, then any flags.
+  repeated string states = 10;
+  optional string stateReason = 11;
+  optional string nodes = 12;
+  SlurmNumber nodeCount = 13;
+  SlurmNumber cpus = 14;
+  // Minutes.
+  SlurmNumber timeLimit = 15;
+  // Unix seconds.
+  SlurmNumber submitTime = 16;
+  SlurmNumber startTime = 17;
+  SlurmNumber endTime = 18;
+  optional string tresRequested = 19;
+  optional string tresAllocated = 20;
+}
+
+message ListNodesRequest {
+  optional CacheParameters cacheParams = 1;
+  // Only nodes in this partition when set.
+  optional string partition = 2;
+}
+
+message ListNodesResponse {
+  repeated Node nodes = 1;
+}
+
+message Node {
+  string name = 1;
+  repeated string states = 2;
+  repeated string partitions = 3;
+  SlurmNumber cpus = 4;
+  SlurmNumber allocCpus = 5;
+  // Load average scaled by 100, as Slurm reports it.
+  SlurmNumber cpuLoad = 6;
+  // MiB.
+  SlurmNumber realMemory = 7;
+  SlurmNumber allocMemory = 8;
+  SlurmNumber freeMemory = 9;
+  optional string gres = 10;
+  optional string gresUsed = 11;
+  optional string reason = 12;
+}
+
+message ListPartitionsRequest {
+  optional CacheParameters cacheParams = 1;
+}
+
+message ListPartitionsResponse {
+  repeated Partition partitions = 1;
+}
+
+message Partition {
+  string name = 1;
+  repeated string states = 2;
+  optional string nodes = 3;
+  SlurmNumber totalNodes = 4;
+  SlurmNumber totalCpus = 5;
+  // Minutes.
+  SlurmNumber maxTime = 6;
+}

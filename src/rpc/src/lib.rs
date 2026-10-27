@@ -3,4 +3,5 @@ pub mod slurmview {
 }
 
 pub mod cache;
+pub mod service;
 pub mod slurm;

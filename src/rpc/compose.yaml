@@ -4,14 +4,36 @@ services:
     ports:
       - "6379:6379"
 
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: slurmview
+      POSTGRES_PASSWORD: slurmview
+      POSTGRES_DB: slurmview
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slurmview"]
+      interval: 2s
+      retries: 15
+
   rpc:
     build:
       context: ../..
       dockerfile: src/rpc/Containerfile
     environment:
       REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://slurmview:slurmview@postgres:5432/slurmview
       RPC_ADDR: 0.0.0.0:50051
     ports:
       - "50051:50051"
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -1,0 +1,22 @@
+# Single-container Slurm 25.05 cluster for demos: munge, slurmctld and four
+# slurmd instances (c1-c4) on one host. Not for production use.
+FROM registry.fedoraproject.org/fedora:44 AS build
+ARG SLURM_VERSION=25.05.6
+RUN dnf -y -q install gcc make bzip2 perl python3 munge-devel json-c-devel \
+      && dnf clean all
+WORKDIR /build
+RUN curl -fsSL https://download.schedmd.com/slurm/slurm-${SLURM_VERSION}.tar.bz2 | tar xj --strip-components=1
+RUN ./configure --prefix=/opt/slurm --sysconfdir=/etc/slurm --enable-multiple-slurmd \
+      --without-hdf5 --without-rpath >/dev/null \
+    && make -j"$(nproc)" >/dev/null \
+    && make install >/dev/null
+
+FROM registry.fedoraproject.org/fedora:44
+RUN dnf -y -q install munge json-c python3 procps-ng hostname util-linux && dnf clean all
+COPY --from=build /opt/slurm /opt/slurm
+ENV PATH=/opt/slurm/bin:/opt/slurm/sbin:$PATH
+COPY slurm.conf cgroup.conf /etc/slurm/
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN mkdir -p /var/spool/slurmctld /var/log/slurm /run/munge \
+    && for n in c1 c2 c3 c4; do mkdir -p /var/spool/slurmd/$n; done
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

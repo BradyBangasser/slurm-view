@@ -1,9 +1,11 @@
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use tonic::transport::Server;
 use tonic_web::GrpcWebLayer;
 
 use rpc::cache::RequestCache;
+use rpc::history::{Sampler, StatsHistory};
 use rpc::service::SlurmViewService;
 use rpc::slurm::Slurm;
 use rpc::slurmview::slurm_view_server::SlurmViewServer;
@@ -22,9 +24,49 @@ async fn main() -> anyhow::Result<()> {
         Err(_) => Slurm::connect().await?,
     };
 
-    let redis_client = redis::Client::open(redis_url)?;
-    let redis = redis::aio::ConnectionManager::new(redis_client).await?;
-    let service = SlurmViewService::new(slurm.clone(), RequestCache::new(redis));
+    // Redis is optional: without it every call goes to Slurm, reported as
+    // `x-slurmview-cache: off`.
+    let cache = match connect_redis(&redis_url).await {
+        Ok(redis) => {
+            println!("Caching responses in Redis at {redis_url}");
+            RequestCache::new(redis)
+        }
+        Err(e) => {
+            eprintln!("Redis at {redis_url} unavailable ({e}); running without a cache");
+            RequestCache::disabled()
+        }
+    };
+
+    // Stats history is optional: without DATABASE_URL the sampler does not
+    // run and GetStatsHistory returns FAILED_PRECONDITION.
+    let history = match std::env::var("DATABASE_URL") {
+        Ok(url) => {
+            let history = StatsHistory::connect(&url).await?;
+            let interval = env_secs("STATS_SAMPLE_INTERVAL_SECS", 60)?;
+            let retention = env_secs("STATS_RETENTION_SECS", 30 * 24 * 60 * 60)?;
+            println!(
+                "Recording stats every {}s, keeping {}s",
+                interval.as_secs(),
+                retention.as_secs()
+            );
+            tokio::spawn(
+                Sampler {
+                    slurm: slurm.clone(),
+                    history: history.clone(),
+                    interval,
+                    retention,
+                }
+                .run(),
+            );
+            Some(history)
+        }
+        Err(_) => {
+            println!("DATABASE_URL not set; stats history disabled");
+            None
+        }
+    };
+
+    let service = SlurmViewService::new(slurm.clone(), cache, history);
 
     println!(
         "SlurmView RPC listening on {addr} (data parser {})",
@@ -40,4 +82,22 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+async fn connect_redis(url: &str) -> anyhow::Result<redis::aio::ConnectionManager> {
+    let client = redis::Client::open(url)?;
+    let connect = redis::aio::ConnectionManager::new(client);
+    Ok(tokio::time::timeout(Duration::from_secs(5), connect).await??)
+}
+
+/// A positive number of seconds from the environment, or `default`.
+fn env_secs(name: &str, default: u64) -> anyhow::Result<Duration> {
+    let secs = match std::env::var(name) {
+        Ok(value) => value
+            .parse()
+            .map_err(|e| anyhow::anyhow!("{name}={value:?}: {e}"))?,
+        Err(_) => default,
+    };
+    anyhow::ensure!(secs > 0, "{name} must be positive");
+    Ok(Duration::from_secs(secs))
 }

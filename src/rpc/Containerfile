@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/ap
 COPY src/rpc/Cargo.toml src/rpc/Cargo.lock ./
 COPY src/rpc/build.rs ./
 COPY src/rpc/src ./src
+COPY src/rpc/migrations ./migrations
 COPY proto/slurmview.proto /proto/slurmview.proto
 RUN cargo build --release
 

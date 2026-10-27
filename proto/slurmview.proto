@@ -7,13 +7,16 @@ package slurmview;
 // Every call is cached per request: the server hashes the method, the request
 // metadata and the request body, and serves the stored response body from
 // Redis until it expires. The response metadata carries the outcome:
-//   x-slurmview-cache:     hit | miss | bypass
+//   x-slurmview-cache:     hit | miss | bypass | off (server has no Redis)
 //   x-slurmview-cache-ttl: seconds until the cached body expires
 service SlurmView {
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
   rpc GetJob(GetJobRequest) returns (GetJobResponse);
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc ListPartitions(ListPartitionsRequest) returns (ListPartitionsResponse);
+  // Requires the server to run with a Postgres DATABASE_URL; otherwise
+  // returns FAILED_PRECONDITION.
+  rpc GetStatsHistory(GetStatsHistoryRequest) returns (GetStatsHistoryResponse);
 }
 
 // Not part of the cache key. bypassCache skips the cache read and stores the
@@ -103,6 +106,8 @@ message Node {
   optional string gres = 10;
   optional string gresUsed = 11;
   optional string reason = 12;
+  // CPUs available to jobs after core specialization.
+  SlurmNumber effectiveCpus = 13;
 }
 
 message ListPartitionsRequest {
@@ -121,4 +126,64 @@ message Partition {
   SlurmNumber totalCpus = 5;
   // Minutes.
   SlurmNumber maxTime = 6;
+}
+
+message GetStatsHistoryRequest {
+  optional CacheParameters cacheParams = 1;
+  // Only this partition's nodes when set; the whole cluster otherwise.
+  optional string partition = 2;
+  // Window as unix seconds. When start is unset the window is the last
+  // lookbackSeconds (default one day) before end, and end defaults to now.
+  // Prefer lookbackSeconds over a moving start so repeat calls share a
+  // cache entry.
+  optional int64 start = 3;
+  optional int64 end = 4;
+  optional uint64 lookbackSeconds = 5;
+  // Points are averaged into buckets of this width. Unset or 0 picks a
+  // width giving about 200 points.
+  optional uint64 bucketSeconds = 6;
+}
+
+message GetStatsHistoryResponse {
+  // Echo of the resolved window and bucket width.
+  int64 start = 1;
+  int64 end = 2;
+  uint64 bucketSeconds = 3;
+  // Oldest first. Empty buckets are omitted.
+  repeated StatsPoint points = 4;
+}
+
+// One bucket of samples. Values are averages over the samples in the
+// bucket, so they can be fractional.
+//
+// Invariants per sample, and therefore per average:
+//   cpuAllocated + cpuAvailable + cpuUnavailable == cpuConfigured
+//   memoryAllocatedMib + memoryUnallocatedMib + memoryUnavailableMib == memoryTotalMib
+//   gpuAllocated + gpuAvailable + gpuUnavailable == gpuTotal
+message StatsPoint {
+  // Bucket start, unix seconds.
+  int64 time = 1;
+  uint32 samples = 2;
+
+  double cpuConfigured = 3;
+  double cpuAllocated = 4;
+  double cpuAvailable = 5;
+  double cpuUnavailable = 6;
+
+  double memoryTotalMib = 7;
+  double memoryAllocatedMib = 8;
+  double memoryUnallocatedMib = 9;
+  double memoryUnavailableMib = 10;
+
+  double gpuTotal = 11;
+  double gpuAllocated = 12;
+  double gpuAvailable = 13;
+  double gpuUnavailable = 14;
+
+  double nodesTotal = 15;
+  double nodesDown = 16;
+  double nodesRestricted = 17;
+
+  double jobsRunning = 18;
+  double jobsPending = 19;
 }

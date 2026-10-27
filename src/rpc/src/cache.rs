@@ -32,6 +32,8 @@ pub enum CacheStatus {
     Hit,
     Miss,
     Bypass,
+    /// The server is running without Redis.
+    Off,
 }
 
 impl CacheStatus {
@@ -40,24 +42,34 @@ impl CacheStatus {
             Self::Hit => "hit",
             Self::Miss => "miss",
             Self::Bypass => "bypass",
+            Self::Off => "off",
         }
     }
 }
 
 #[derive(Clone)]
 pub struct RequestCache {
-    redis: redis::aio::ConnectionManager,
+    redis: Option<redis::aio::ConnectionManager>,
 }
 
 impl RequestCache {
     pub fn new(redis: redis::aio::ConnectionManager) -> Self {
-        Self { redis }
+        Self { redis: Some(redis) }
+    }
+
+    /// A cache that stores nothing, for running without Redis.
+    pub fn disabled() -> Self {
+        Self { redis: None }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.redis.is_some()
     }
 
     /// Return the cached response body for `key` and its remaining TTL.
     /// Redis errors and undecodable bodies are treated as a miss.
     pub async fn get<T: Message + Default>(&self, key: &str) -> Option<(T, u64)> {
-        let mut conn = self.redis.clone();
+        let mut conn = self.redis.clone()?;
         let (body, ttl): (Option<Vec<u8>>, i64) = redis::pipe()
             .get(key)
             .ttl(key)
@@ -75,7 +87,9 @@ impl RequestCache {
     /// Store the encoded response body. Failures are logged, not returned:
     /// a cache outage must not fail the request.
     pub async fn put<T: Message>(&self, key: &str, message: &T, ttl_secs: u64) {
-        let mut conn = self.redis.clone();
+        let Some(mut conn) = self.redis.clone() else {
+            return;
+        };
         let result: redis::RedisResult<()> =
             conn.set_ex(key, message.encode_to_vec(), ttl_secs).await;
         if let Err(e) = result {

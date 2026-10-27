@@ -14,6 +14,9 @@ use crate::slurmview::{Job, Node, Partition, SlurmNumber};
 /// Newest first. v0.0.43 is the compatibility floor for Slurm 25.05+.
 pub const SUPPORTED_DATA_PARSERS: [&str; 3] = ["v0.0.45", "v0.0.44", "v0.0.43"];
 
+/// Warnings Slurm attaches to ordinary output, e.g. squeue on an empty queue.
+const BENIGN_WARNINGS: &[&str] = &["Zero jobs to dump"];
+
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 const NODES_TIMEOUT: Duration = Duration::from_secs(25);
 
@@ -86,16 +89,19 @@ impl Slurm {
         } else {
             states.join(",")
         };
-        let mut args = vec![self.json_flag(), format!("--states={states}")];
+        let flag = self.json_flag();
+        let states = format!("--states={states}");
+        let stdout = run("squeue", &[&flag, &states], DEFAULT_TIMEOUT).await?;
+        let mut jobs = parse_jobs(&stdout)?;
+        // Filtered here rather than with squeue's --user/--partition, whose
+        // interaction with --json varies across Slurm releases.
         if let Some(user) = user {
-            args.push(format!("--user={user}"));
+            jobs.retain(|j| j.user == user);
         }
         if let Some(partition) = partition {
-            args.push(format!("--partition={partition}"));
+            jobs.retain(|j| crate::stats::job_in_partition(j, partition));
         }
-        let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        let stdout = run("squeue", &args, DEFAULT_TIMEOUT).await?;
-        parse_jobs(&stdout)
+        Ok(jobs)
     }
 
     pub async fn get_job(&self, job_id: &str) -> Result<Job, SlurmError> {
@@ -104,9 +110,7 @@ impl Slurm {
         }
         let flag = self.json_flag();
         let stdout = run("scontrol", &[&flag, "show", "job", job_id], DEFAULT_TIMEOUT).await?;
-        parse_jobs(&stdout)?
-            .into_iter()
-            .next()
+        select_job(parse_jobs(&stdout)?, job_id)
             .ok_or_else(|| SlurmError::NotFound(format!("job {job_id}")))
     }
 
@@ -125,6 +129,15 @@ impl Slurm {
         let stdout = run("scontrol", &[&flag, "show", "partition"], DEFAULT_TIMEOUT).await?;
         parse_partitions(&stdout)
     }
+}
+
+/// Pick the requested job from `scontrol show job` output, which lists every
+/// task of an array even when asked for one (`show job 12_3`).
+fn select_job(jobs: Vec<Job>, requested: &str) -> Option<Job> {
+    let exact = jobs.iter().position(|j| j.id == requested);
+    let by_job_id = || jobs.iter().position(|j| j.job_id == requested);
+    let index = exact.or_else(by_job_id)?;
+    jobs.into_iter().nth(index)
 }
 
 /// Run a command without a shell, killing it if it outlives `timeout`.
@@ -171,11 +184,15 @@ fn parse_envelope(stdout: &str) -> Result<Value, SlurmError> {
         let messages: Vec<String> = errors.iter().map(describe_notice).collect();
         return Err(SlurmError::Upstream(messages.join("; ")));
     }
-    if let Some(warnings) = value.get("warnings").and_then(Value::as_array)
-        && !warnings.is_empty()
-    {
-        let messages: Vec<String> = warnings.iter().map(describe_notice).collect();
-        eprintln!("[Slurm] warnings: {}", messages.join("; "));
+    if let Some(warnings) = value.get("warnings").and_then(Value::as_array) {
+        let messages: Vec<String> = warnings
+            .iter()
+            .map(describe_notice)
+            .filter(|m| !BENIGN_WARNINGS.contains(&m.as_str()))
+            .collect();
+        if !messages.is_empty() {
+            eprintln!("[Slurm] warnings: {}", messages.join("; "));
+        }
     }
 
     Ok(value)
@@ -279,6 +296,7 @@ fn normalize_node(raw: &Value) -> Result<Node, SlurmError> {
         gres: optional_string(raw.get("gres")),
         gres_used: optional_string(raw.get("gres_used")),
         reason: optional_string(raw.get("reason")),
+        effective_cpus: Some(slurm_number(raw.get("effective_cpus"))),
     })
 }
 
@@ -440,6 +458,23 @@ mod tests {
         assert_eq!(partitions[0].nodes.as_deref(), Some("gpu[01-04]"));
         assert_eq!(partitions[0].total_cpus.unwrap().number, 256);
         assert!(partitions[0].max_time.unwrap().infinite);
+    }
+
+    #[test]
+    fn selects_requested_array_task() {
+        // Shape of real `scontrol --json show job 1_4` output: the whole array,
+        // with the master record (job_id 1) carrying the last task.
+        let task = |job_id: i64, task_id: i64| Job {
+            id: format!("1_{task_id}"),
+            job_id: job_id.to_string(),
+            ..Default::default()
+        };
+        let array = || vec![task(1, 5), task(9, 4), task(8, 3), task(7, 2)];
+
+        assert_eq!(select_job(array(), "1_4").unwrap().job_id, "9");
+        assert_eq!(select_job(array(), "8").unwrap().id, "1_3");
+        assert_eq!(select_job(array(), "1").unwrap().id, "1_5");
+        assert!(select_job(array(), "1_9").is_none());
     }
 
     #[test]

@@ -3,5 +3,7 @@ pub mod slurmview {
 }
 
 pub mod cache;
+pub mod history;
 pub mod service;
 pub mod slurm;
+pub mod stats;

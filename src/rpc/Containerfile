@@ -1,0 +1,17 @@
+# Build context must be the repository root:
+#   docker build -f src/rpc/Containerfile .
+
+FROM rust:1.98 AS build
+WORKDIR /build
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+COPY src/rpc/Cargo.toml src/rpc/Cargo.lock ./
+COPY src/rpc/build.rs ./
+COPY src/rpc/src ./src
+COPY proto/slurmview.proto /proto/slurmview.proto
+RUN cargo build --release
+
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /build/target/release/rpc /usr/local/bin/rpc
+EXPOSE 50051
+ENTRYPOINT ["/usr/local/bin/rpc"]

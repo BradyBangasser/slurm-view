@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rpc:
+    build:
+      context: ../..
+      dockerfile: src/rpc/Containerfile
+    environment:
+      REDIS_URL: redis://redis:6379
+      RPC_ADDR: 0.0.0.0:50051
+    ports:
+      - "50051:50051"
+    depends_on:
+      - redis
